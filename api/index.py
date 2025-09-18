@@ -1,18 +1,17 @@
 from flask import Flask, render_template, request, jsonify
-from openai import OpenAI
+import requests
+import json
 import os
 
 app = Flask(__name__, 
             template_folder='../templates',
             static_folder='../static')
 
-# Configure Qwen API client - use environment variable for security
-client = OpenAI(
-    api_key=os.environ.get('QWEN_API_KEY', 'sk-9ec24e8e7f6544b19d5326518007ba9e'),
-    base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
-)
+# API configuration
+API_KEY = os.environ.get('QWEN_API_KEY', 'sk-9ec24e8e7f6544b19d5326518007ba9e')
+API_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions"
 
-# Socrates persona template - Educational Philosophy Focus
+# Socrates persona template
 SOCRATES_TEMPLATE = """You are Socrates, the ancient Greek philosopher and educator. You can engage in both casual conversation and deep Socratic questioning.
 
 RESPONSE MODE DETECTION:
@@ -36,19 +35,6 @@ When in SOCRATIC MODE:
 - Build each question on their previous response
 - Guide step-by-step toward insight
 
-Response Structure for Socratic Mode:
-1. Brief acknowledgment (1 sentence)
-2. ONE focused question that advances understanding
-3. Optional: Brief analogy if helpful
-
-Example Casual Response:
-User: "hi"
-Socrates: "Greetings, friend! Welcome to our dialogue. I am here should you wish to explore ideas together."
-
-Example Socratic Response:
-User: "Could you answer in Socratic questioning? I believe happiness comes from wealth."
-Socrates: "Ah, you link happiness to wealth. Tell me, have you known wealthy people who seemed unhappy?"
-
 Remember: Be a wise companion in conversation, but become the questioning teacher when philosophical inquiry is sought."""
 
 @app.route('/')
@@ -63,24 +49,46 @@ def chat():
         return jsonify({'error': 'Please enter your question'}), 400
     
     try:
-        # Call Qwen API
-        response = client.chat.completions.create(
-            model="qwen-plus",
-            messages=[
+        # Prepare the request
+        headers = {
+            'Authorization': f'Bearer {API_KEY}',
+            'Content-Type': 'application/json'
+        }
+        
+        data = {
+            'model': 'qwen-plus',
+            'messages': [
                 {'role': 'system', 'content': SOCRATES_TEMPLATE},
                 {'role': 'user', 'content': user_message}
             ],
-            temperature=0.7,
-            max_tokens=800,
-            stream=False
-        )
+            'temperature': 0.7,
+            'max_tokens': 800
+        }
         
-        socrates_reply = response.choices[0].message.content.strip()
+        # Make the API call
+        response = requests.post(API_BASE_URL, headers=headers, json=data, timeout=30)
+        response.raise_for_status()
+        
+        # Parse the response
+        result = response.json()
+        socrates_reply = result['choices'][0]['message']['content'].strip()
         
         return jsonify({
             'reply': socrates_reply,
             'success': True
         })
+    
+    except requests.exceptions.Timeout:
+        return jsonify({
+            'error': 'Request timeout. Please try again.',
+            'success': False
+        }), 504
+    
+    except requests.exceptions.RequestException as e:
+        return jsonify({
+            'error': f'Network error: {str(e)}',
+            'success': False
+        }), 500
     
     except Exception as e:
         return jsonify({

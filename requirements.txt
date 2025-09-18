@@ -1,2 +1,2 @@
 Flask==3.0.0
-openai==1.54.3
+requests==2.31.0

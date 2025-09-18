@@ -337,9 +337,9 @@ def internal_error(error):
     return jsonify({'error': 'Internal server error'}), 500
 
 # For Vercel deployment
-def handler(request):
-    """Vercel serverless function handler"""
-    return app(request)
+# def handler(request):
+#     """Vercel serverless function handler"""
+#     return app(request)
 
 # For local development
 if __name__ == '__main__':

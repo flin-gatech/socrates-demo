@@ -38,6 +38,7 @@
             color: white;
             padding: 25px;
             text-align: center;
+            position: relative;
         }
 
         .header h1 {
@@ -50,6 +51,18 @@
             font-size: 14px;
             opacity: 0.95;
             font-style: italic;
+        }
+
+        .progress-indicator {
+            position: absolute;
+            top: 10px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.2);
+            padding: 8px 16px;
+            border-radius: 15px;
+            font-size: 12px;
+            font-weight: 600;
+            display: none; /* 隐藏进度指示器 */
         }
 
         .chat-container {
@@ -86,6 +99,7 @@
             border-radius: 18px;
             line-height: 1.6;
             font-size: 15px;
+            position: relative;
         }
 
         .user .message-content {
@@ -117,12 +131,26 @@
             box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
         }
 
+        .phase-indicator {
+            position: absolute;
+            top: -8px;
+            left: 15px;
+            background: #764ba2;
+            color: white;
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-size: 10px;
+            font-weight: 600;
+            display: none; /* 隐藏阶段指示器 */
+        }
+
         .input-area {
             padding: 20px;
             background: white;
             border-top: 1px solid #e0e0e0;
             display: flex;
             gap: 12px;
+            position: relative;
         }
 
         .input-area input {
@@ -187,6 +215,47 @@
             font-style: italic;
         }
 
+        .dialogue-complete {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 15px;
+            margin: 20px 0;
+            text-align: center;
+        }
+
+        .dialogue-actions {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            margin-top: 15px;
+        }
+
+        .dialogue-actions button {
+            padding: 10px 20px;
+            border: 2px solid white;
+            background: transparent;
+            color: white;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.3s;
+        }
+
+        .dialogue-actions button:hover {
+            background: white;
+            color: #764ba2;
+        }
+
+        .session-info {
+            position: absolute;
+            bottom: 10px;
+            right: 20px;
+            font-size: 11px;
+            opacity: 0.7;
+            display: none; /* 隐藏会话信息 */
+        }
+
         /* Scrollbar styles */
         .chat-container::-webkit-scrollbar {
             width: 8px;
@@ -211,6 +280,8 @@
         <div class="header">
             <h1>Dialogue with Socrates</h1>
             <p>"I know that I know nothing" - Socrates</p>
+            <div class="progress-indicator" id="progressIndicator">Round 1 • Exploration</div>
+            <div class="session-info" id="sessionInfo">Session: New</div>
         </div>
         
         <div class="chat-container" id="chatContainer">
@@ -227,11 +298,156 @@
     </div>
 
     <script>
+        // === CONVERSATION MEMORY SYSTEM ===
+        class ConversationMemory {
+            constructor() {
+                this.history = [];
+                this.currentRound = 1;
+                this.dialoguePhase = 'exploration';
+                this.sessionId = this.generateSessionId();
+                
+                // 🔥 移除：不再从localStorage加载
+                // this.loadFromStorage();
+                
+                // 🔥 新增：清空任何旧的存储数据
+                this.clearStorage();
+            }
+
+            generateSessionId() {
+                return 'session_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+            }
+
+            addMessage(content, isUser) {
+                const message = {
+                    content,
+                    isUser,
+                    timestamp: Date.now(),
+                    round: this.currentRound
+                };
+                
+                this.history.push(message);
+                
+                if (!isUser) {
+                    this.currentRound++;
+                    this.updateDialoguePhase();
+                }
+                
+                // 🔥 移除：不再保存到localStorage
+                // this.saveToStorage();
+                this.updateUI();
+            }
+
+            updateDialoguePhase() {
+                if (this.currentRound <= 2) {
+                    this.dialoguePhase = 'exploration';
+                } else if (this.currentRound <= 4) {
+                    this.dialoguePhase = 'examination';
+                } else if (this.currentRound <= 5) {
+                    this.dialoguePhase = 'deepening';
+                } else {
+                    this.dialoguePhase = 'synthesis';
+                }
+            }
+
+            getPhaseDescription() {
+                const phases = {
+                    'exploration': 'Exploration',
+                    'examination': 'Examination', 
+                    'deepening': 'Deepening',
+                    'synthesis': 'Synthesis'
+                };
+                return phases[this.dialoguePhase];
+            }
+
+            shouldEndDialogue() {
+                return this.currentRound > 6;
+            }
+
+            getContextForAPI() {
+                // Send last 5 rounds for API context (10 messages max)
+                const recentHistory = this.history.slice(-10);
+                return recentHistory.map(msg => ({
+                    role: msg.isUser ? 'user' : 'assistant',
+                    content: msg.content
+                }));
+            }
+
+            getMetadata() {
+                return {
+                    round: this.currentRound,
+                    phase: this.dialoguePhase,
+                    phaseDescription: this.getPhaseDescription(),
+                    shouldEnd: this.shouldEndDialogue()
+                };
+            }
+
+            clearStorage() {
+                try {
+                    localStorage.removeItem('socrates_conversation');
+                    console.log('Cleared previous conversation data');
+                } catch (e) {
+                    console.log('Could not clear storage:', e);
+                }
+            }
+
+            updateUI() {
+                const progress = document.getElementById('progressIndicator');
+                if (progress) {
+                    progress.textContent = `Round ${this.currentRound} • ${this.getPhaseDescription()}`;
+                }
+                
+                const sessionInfo = document.getElementById('sessionInfo');
+                if (sessionInfo) {
+                    sessionInfo.textContent = `Session: New`;
+                }
+            }
+
+            newDialogue() {
+                this.history = [];
+                this.currentRound = 1;
+                this.dialoguePhase = 'exploration';
+                this.sessionId = this.generateSessionId();
+                this.clearStorage(); // 清空存储
+                this.updateUI();
+                
+                // Clear chat display
+                const chatContainer = document.getElementById('chatContainer');
+                chatContainer.innerHTML = `
+                    <div class="welcome-message">
+                        <p>Starting a new Socratic dialogue...</p>
+                        <p>What shall we explore together?</p>
+                    </div>
+                `;
+            }
+        }
+
+
+        // === MAIN APPLICATION ===
+        const memory = new ConversationMemory();
         const chatContainer = document.getElementById('chatContainer');
         const userInput = document.getElementById('userInput');
         const sendBtn = document.getElementById('sendBtn');
 
-        // Remove welcome message
+        // Initialize UI on page load
+        window.onload = function() {
+            userInput.focus();
+            memory.updateUI();
+            console.log('Started fresh conversation - no history restored');
+
+        };
+
+        function restoreConversation() {
+            removeWelcome();
+            memory.history.forEach(msg => {
+                displayMessage(msg.content, msg.isUser, msg.round);
+            });
+            
+            // Check if dialogue should end
+            if (memory.shouldEndDialogue()) {
+                showDialogueComplete();
+            }
+        }
+
         function removeWelcome() {
             const welcome = document.querySelector('.welcome-message');
             if (welcome) {
@@ -239,8 +455,7 @@
             }
         }
 
-        // Add message
-        function addMessage(content, isUser = false) {
+        function displayMessage(content, isUser = false, round = null) {
             removeWelcome();
             
             const messageDiv = document.createElement('div');
@@ -251,9 +466,12 @@
                     <div class="message-content">${content}</div>
                 `;
             } else {
+                // 不显示阶段标签，但保留结构
                 messageDiv.innerHTML = `
-                    <img src="/static/socrates.jpg" alt="Socrates" class="avatar" onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%22100%22 height=%22100%22><rect fill=%22%23764ba2%22 width=%22100%22 height=%22100%22/><text x=%2250%%22 y=%2250%%22 text-anchor=%22middle%22 dy=%22.3em%22 fill=%22white%22 font-size=%2240%22>S</text></svg>'">
-                    <div class="message-content">${content}</div>
+                    <img src="static/socrates.jpg" alt="Socrates" class="avatar" onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%22100%22 height=%22100%22><rect fill=%22%23764ba2%22 width=%22100%22 height=%22100%22/><text x=%2250%%22 y=%2250%%22 text-anchor=%22middle%22 dy=%22.3em%22 fill=%22white%22 font-size=%2240%22>S</text></svg>'">
+                    <div class="message-content">
+                        ${content}
+                    </div>
                 `;
             }
             
@@ -261,7 +479,6 @@
             chatContainer.scrollTop = chatContainer.scrollHeight;
         }
 
-        // Show loading
         function showLoading() {
             removeWelcome();
             
@@ -269,7 +486,7 @@
             loadingDiv.className = 'message socrates';
             loadingDiv.id = 'loadingMessage';
             loadingDiv.innerHTML = `
-                <img src="/static/socrates.jpg" alt="Socrates" class="avatar" onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%22100%22 height=%22100%22><rect fill=%22%23764ba2%22 width=%22100%22 height=%22100%22/><text x=%2250%%22 y=%2250%%22 text-anchor=%22middle%22 dy=%22.3em%22 fill=%22white%22 font-size=%2240%22>S</text></svg>'">
+                <img src="static/socrates.jpg" alt="Socrates" class="avatar" onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%22100%22 height=%22100%22><rect fill=%22%23764ba2%22 width=%22100%22 height=%22100%22/><text x=%2250%%22 y=%2250%%22 text-anchor=%22middle%22 dy=%22.3em%22 fill=%22white%22 font-size=%2240%22>S</text></svg>'">
                 <div class="message-content">
                     <span class="loading"></span>
                     <span class="loading" style="animation-delay: 0.2s;"></span>
@@ -280,7 +497,6 @@
             chatContainer.scrollTop = chatContainer.scrollHeight;
         }
 
-        // Remove loading
         function removeLoading() {
             const loading = document.getElementById('loadingMessage');
             if (loading) {
@@ -288,14 +504,55 @@
             }
         }
 
-        // Send message
+        function showDialogueComplete() {
+            const completeDiv = document.createElement('div');
+            completeDiv.className = 'dialogue-complete';
+            completeDiv.innerHTML = `
+                <h3>🎯 Dialogue Complete</h3>
+                <p>Through our thoughtful exchange, we have explored new depths of understanding.</p>
+                <p><em>"The unexamined life is not worth living"</em></p>
+                <div class="dialogue-actions">
+                    <button onclick="continueDialogue()">Continue Exploring</button>
+                    <button onclick="newDialogue()">New Topic</button>
+                    <button onclick="relatedQuestion()">Related Question</button>
+                </div>
+            `;
+            chatContainer.appendChild(completeDiv);
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+        }
+
+        function continueDialogue() {
+            document.querySelector('.dialogue-complete').remove();
+            // Reset round limit, continue with same topic
+            memory.currentRound = 1;
+            memory.dialoguePhase = 'exploration';
+            memory.updateUI();
+        }
+
+        function newDialogue() {
+            memory.newDialogue();
+        }
+
+        function relatedQuestion() {
+            document.querySelector('.dialogue-complete').remove();
+            displayMessage("What related question would you like to explore, given what we've discovered?", false, memory.currentRound);
+            memory.addMessage("What related question would you like to explore, given what we've discovered?", false);
+        }
+
         async function sendMessage() {
             const message = userInput.value.trim();
             if (!message) return;
             
-            // Add user message
-            addMessage(message, true);
+            // Add user message to memory and display
+            memory.addMessage(message, true);
+            displayMessage(message, true);
             userInput.value = '';
+            
+            // Check if we should end dialogue before sending
+            if (memory.shouldEndDialogue()) {
+                showDialogueComplete();
+                return;
+            }
             
             // Disable send button
             sendBtn.disabled = true;
@@ -310,7 +567,11 @@
                     headers: {
                         'Content-Type': 'application/json',
                     },
-                    body: JSON.stringify({ message: message })
+                    body: JSON.stringify({ 
+                        message: message,
+                        context: memory.getContextForAPI(),
+                        metadata: memory.getMetadata()
+                    })
                 });
                 
                 const data = await response.json();
@@ -319,13 +580,19 @@
                 removeLoading();
                 
                 if (data.success) {
-                    addMessage(data.reply, false);
+                    memory.addMessage(data.reply, false);
+                    displayMessage(data.reply, false, memory.currentRound - 1);
+                    
+                    // Check if we should end dialogue after Socrates' response
+                    if (memory.shouldEndDialogue()) {
+                        showDialogueComplete();
+                    }
                 } else {
-                    addMessage('My apologies, something went wrong. Please try again.', false);
+                    displayMessage('My apologies, something went wrong. Please try again.', false);
                 }
             } catch (error) {
                 removeLoading();
-                addMessage('Connection error. Please check your network and try again.', false);
+                displayMessage('Connection error. Please check your network and try again.', false);
             } finally {
                 sendBtn.disabled = false;
                 sendBtn.textContent = 'Send';
@@ -338,11 +605,6 @@
                 sendMessage();
             }
         });
-
-        // Focus input on load
-        window.onload = function() {
-            userInput.focus();
-        };
     </script>
 </body>
 </html>

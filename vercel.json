@@ -11,10 +11,5 @@
       "src": "/(.*)",
       "dest": "api/index.py"
     }
-  ],
-"env": {
-  "QWEN_API_KEY": "@QWEN_API_KEY",
-  "UPSTASH_REDIS_REST_URL": "@UPSTASH_REDIS_REST_URL",
-  "UPSTASH_REDIS_REST_TOKEN": "@UPSTASH_REDIS_REST_TOKEN"
-}
+  ]
 }

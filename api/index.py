@@ -5,9 +5,13 @@ import os
 import logging
 from datetime import datetime
 import uuid
-from redis_db import get_redis_db
-import uuid
-from datetime import datetime
+
+# 处理导入问题
+try:
+    from .redis_db import get_redis_db
+except ImportError:
+    from redis_db import get_redis_db
+
 redis_db = get_redis_db()
 
 app = Flask(__name__, 

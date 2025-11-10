@@ -488,80 +488,160 @@ def export_statistics():
 
 # ================== 会话管理 ==================
 
+@app.route('/api/sessions', methods=['GET'])
+def get_sessions():
+    """获取会话列表 - 从 Redis 获取"""
+    try:
+        student_id = request.args.get('student_id')
+        
+        if not student_id:
+            return jsonify({'error': '缺少学生ID', 'success': False}), 400
+        
+        # 从 Redis 获取该学生的所有对话
+        all_conversations = redis_db.get_all_conversations()
+        
+        # 筛选该学生的对话
+        student_sessions = []
+        for conv in all_conversations:
+            if conv.get('student_id') == student_id:
+                session_info = {
+                    'id': conv['conversation_id'],
+                    'title': conv.get('title', '无标题对话'),
+                    'created_at': conv['created_at'],
+                    'message_count': conv['message_count']
+                }
+                
+                # 添加最后一条消息预览
+                if conv.get('messages'):
+                    last_msg = conv['messages'][-1]
+                    session_info['last_message'] = last_msg['content'][:50] + ('...' if len(last_msg['content']) > 50 else '')
+                else:
+                    session_info['last_message'] = ''
+                
+                student_sessions.append(session_info)
+        
+        # 按创建时间倒序排列
+        student_sessions.sort(key=lambda x: x['created_at'], reverse=True)
+        
+        return jsonify({
+            'sessions': student_sessions,
+            'success': True
+        })
+        
+    except Exception as e:
+        logger.error(f"Error getting sessions: {e}")
+        return jsonify({'error': str(e), 'success': False}), 500
+
+
 @app.route('/api/sessions/<session_id>', methods=['GET'])
 def get_session(session_id):
-    """获取特定会话的详细信息"""
+    """获取特定会话的详细信息 - 从 Redis 获取"""
     try:
         # 从 Redis 获取
         session = redis_db.get_conversation(session_id)
         
         if not session:
-            return jsonify({'error': '会话不存在', 'success': False}), 404
+            return jsonify({
+                'error': '会话不存在',
+                'success': False
+            }), 404
         
-        return jsonify({'session': session, 'success': True})
+        return jsonify({
+            'session': session,
+            'success': True
+        })
         
     except Exception as e:
         logger.error(f"Error getting session: {e}")
-        return jsonify({'error': str(e), 'success': False}), 500
+        return jsonify({
+            'error': str(e),
+            'success': False
+        }), 500
 
-@app.route('/api/sessions/<session_id>', methods=['GET'])
-def get_session(session_id):
-    """获取特定会话的详细信息"""
-    try:
-        session = chat_sessions.get(session_id)
-        
-        if not session:
-            return jsonify({'error': '会话不存在'}), 404
-        
-        return jsonify(session)
-        
-    except Exception as e:
-        logger.error(f"Error getting session: {e}")
-        return jsonify({'error': str(e)}), 500
 
 @app.route('/api/sessions/<session_id>', methods=['DELETE'])
 def delete_session(session_id):
-    """删除会话"""
+    """删除会话 - 从 Redis 删除"""
     try:
+        if not redis_db.available:
+            return jsonify({
+                'error': 'Redis 不可用',
+                'success': False
+            }), 503
+        
+        # 先检查会话是否存在
+        session = redis_db.get_conversation(session_id)
+        if not session:
+            return jsonify({
+                'error': '会话不存在',
+                'success': False
+            }), 404
+        
         # 从 Redis 删除
         key = f"conversation:{session_id}"
         success = redis_db._delete(key)
         
         if success:
-            return jsonify({'message': '会话已删除', 'success': True})
+            return jsonify({
+                'message': '会话已删除',
+                'success': True
+            })
         else:
-            return jsonify({'error': '会话不存在', 'success': False}), 404
+            return jsonify({
+                'error': '删除失败',
+                'success': False
+            }), 500
             
     except Exception as e:
         logger.error(f"Error deleting session: {e}")
-        return jsonify({'error': str(e), 'success': False}), 500
+        return jsonify({
+            'error': str(e),
+            'success': False
+        }), 500
+
 
 @app.route('/api/sessions', methods=['POST'])
 def create_session():
-    """创建新会话"""
+    """创建新会话 - 这个函数现在主要由 /chat 接口自动调用"""
     try:
         data = request.json or {}
-        student_id = data.get('student_id', 'default')
+        student_id = data.get('student_id')
         llm_type = data.get('llm_type', 'original')
+        title = data.get('title', '新对话')
+        
+        if not student_id:
+            return jsonify({
+                'error': '缺少学生ID',
+                'success': False
+            }), 400
         
         session_id = str(uuid.uuid4())
-        chat_sessions[session_id] = {
-            'id': session_id,
-            'student_id': student_id,
-            'title': '新对话',
-            'created_at': datetime.now().isoformat(),
-            'messages': [],
-            'llm_type': llm_type
+        group_info = get_student_group(student_id) or {
+            'group_id': 'unknown',
+            'group_name': 'unknown'
         }
+        
+        # 在 Redis 中创建新会话
+        redis_db.create_conversation(
+            session_id,
+            student_id,
+            group_info,
+            llm_type,
+            title
+        )
         
         return jsonify({
             'session_id': session_id,
-            'message': '新会话已创建'
+            'message': '新会话已创建',
+            'success': True
         })
         
     except Exception as e:
         logger.error(f"Error creating session: {e}")
-        return jsonify({'error': str(e)}), 500
+        return jsonify({
+            'error': str(e),
+            'success': False
+        }), 500
 
 @app.errorhandler(404)
 def not_found(error):

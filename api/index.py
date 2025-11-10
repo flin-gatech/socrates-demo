@@ -3,7 +3,7 @@ import requests
 import json
 import os
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 import uuid
 
 # 处理导入问题
@@ -105,8 +105,8 @@ def login():
                 'group_name': group_info['group_name'],
                 'llm_type': group_info['llm_type'],
                 'login_count': 1,
-                'first_login_at': datetime.utcnow().isoformat(),
-                'last_login_at': datetime.utcnow().isoformat()
+                'first_login_at': datetime.now(timezone.utc).isoformat(),
+                'last_login_at': datetime.now(timezone.utc).isoformat()
             }
             redis_db.save_student(student_id, student_data)
         
@@ -145,35 +145,185 @@ def health_check():
 
 # ================== LLM调用接口 ==================
 
-def call_srl_llm(messages, student_id):
-    """
-    Group 1: SRL辅助的LLM
-    Self-Regulated Learning (自我调节学习) 支持
-    
-    TODO: 添加SRL相关的系统提示词和引导
-    - 鼓励学生设定学习目标
-    - 监控学习进度
-    - 反思学习策略
-    - 提供元认知支持
-    """
-    system_prompt = {
-        'role': 'system',
-        'content': '''你是一个支持自我调节学习(SRL)的AI助手。请在回答中：
-1. 鼓励学生设定明确的学习目标
-2. 帮助学生监控自己的学习进度
-3. 引导学生反思学习策略的有效性
-4. 提供元认知支持，帮助学生"学会如何学习"
+# ================== LLM调用接口 ==================
 
-在适当的时候询问：
-- 你的学习目标是什么？
-- 你觉得这个方法对你有效吗？
-- 你可以如何改进你的学习策略？'''
+import time
+from requests.exceptions import Timeout, RequestException
+
+# API 配置常量
+AGENT_CONFIG = {
+    'short_instruction': {
+        'max_tokens': 300,      # Agent 简短指导 (2-3句话)
+        'timeout': 30
+    },
+    'medium_instruction': {
+        'max_tokens': 600,      # Agent 中等指导 (3-5句话)
+        'timeout': 30
+    },
+    'full_response': {
+        'max_tokens': 2000,      # 完整回答
+        'timeout': 60
+    }
+}
+
+def call_qwen_api(messages, max_tokens=800, timeout=60, max_retries=2):
+    """
+    调用通义千问API (优化版)
+    
+    Args:
+        messages: 消息列表
+        max_tokens: 最大生成token数
+        timeout: 超时时间(秒)
+        max_retries: 最大重试次数
+    
+    Returns:
+        API响应的JSON对象
+    """
+    headers = {
+        'Authorization': f'Bearer {API_KEY}',
+        'Content-Type': 'application/json'
     }
     
-    # 在消息列表开头添加系统提示
-    messages_with_prompt = [system_prompt] + messages
+    api_data = {
+        'model': 'qwen-plus',
+        'messages': messages,
+        'temperature': 0.7,
+        'max_tokens': max_tokens,
+        'top_p': 0.9
+    }
     
-    return call_qwen_api(messages_with_prompt)
+    last_error = None
+    
+    for attempt in range(max_retries):
+        try:
+            response = requests.post(
+                API_BASE_URL, 
+                headers=headers, 
+                json=api_data, 
+                timeout=timeout
+            )
+            response.raise_for_status()
+            
+            result = response.json()
+            
+            # 检查是否因为 max_tokens 限制而截断
+            if result.get('choices'):
+                finish_reason = result['choices'][0].get('finish_reason')
+                if finish_reason == 'length':
+                    logger.warning(f"⚠️ Response truncated due to max_tokens={max_tokens} limit")
+            
+            return result
+            
+        except Timeout as e:
+            last_error = e
+            logger.warning(f"API timeout on attempt {attempt + 1}/{max_retries} (timeout={timeout}s)")
+            if attempt < max_retries - 1:
+                sleep_time = 2 ** attempt  # 指数退避: 1s, 2s
+                logger.info(f"Retrying in {sleep_time}s...")
+                time.sleep(sleep_time)
+                continue
+            else:
+                logger.error(f"API timeout after {max_retries} attempts")
+                raise
+                
+        except RequestException as e:
+            last_error = e
+            logger.error(f"API request error: {e}")
+            raise
+    
+    # 如果所有重试都失败
+    raise last_error
+
+
+def call_srl_llm(messages, student_id):
+    """
+    Group 1: SRL辅助的LLM - 两步工作流
+    
+    工作流程:
+    1. 先将学生问题发送给 SRL Instruction Agent,获取基于SRL的指导
+    2. 将 SRL 指导 + 学生原始问题一起发送给最终 LLM 生成回答
+    """
+    
+    # 提取学生的最新问题
+    user_message = messages[-1]['content'] if messages and messages[-1]['role'] == 'user' else ''
+    
+    if not user_message:
+        return call_qwen_api(messages, **AGENT_CONFIG['full_response'])
+    
+    # ========== 步骤1: 调用 SRL Instruction Agent ==========
+    srl_agent_prompt = {
+        'role': 'system',
+        'content': '''你是一个自我调节学习(SRL)指导专家。
+
+请分析学生的问题,并提供简短的SRL指导建议(2-3句话),帮助学生:
+- 设定明确的学习目标
+- 监控学习进度
+- 反思学习策略
+- 提供元认知支持
+
+只需要返回SRL指导建议,不要直接回答学生的问题。'''
+    }
+    
+    srl_agent_messages = [
+        srl_agent_prompt,
+        {'role': 'user', 'content': f'学生问题: {user_message}\n\n请给出SRL指导建议:'}
+    ]
+    
+    logger.info(f"Step 1: Calling SRL Instruction Agent for student {student_id}")
+    
+    try:
+        srl_response = call_qwen_api(
+            srl_agent_messages, 
+            **AGENT_CONFIG['short_instruction']  # max_tokens=300, timeout=30
+        )
+        srl_instruction = srl_response['choices'][0]['message']['content'].strip()
+        logger.info(f"SRL Instruction generated: {srl_instruction[:100]}...")
+    except Exception as e:
+        logger.error(f"Error calling SRL agent: {e}")
+        # 如果 SRL agent 失败,使用默认指导
+        srl_instruction = "请思考你的学习目标,并在学习过程中监控自己的进度。"
+    
+    # ========== 步骤2: 调用最终 LLM 回答学生问题 ==========
+    final_system_prompt = {
+        'role': 'system',
+        'content': f'''你是一个支持自我调节学习(SRL)的AI助手。
+
+**SRL 指导建议:**
+{srl_instruction}
+
+请在回答学生问题时:
+1. 自然地融入上述SRL指导建议
+2. 提供准确、有帮助的答案
+3. 鼓励学生进行自我反思和监控
+4. 帮助学生"学会如何学习"
+
+记住:你的回答应该既解决学生的具体问题,又促进他们的自我调节学习能力。'''
+    }
+    
+    # 构建最终的消息列表
+    final_messages = [final_system_prompt]
+    
+    # 添加历史对话(排除最后一条,因为我们要重新添加)
+    if len(messages) > 1:
+        for msg in messages[:-1]:
+            final_messages.append({
+                'role': msg['role'],
+                'content': msg['content']
+            })
+    
+    # 添加当前用户问题
+    final_messages.append({
+        'role': 'user',
+        'content': user_message
+    })
+    
+    logger.info(f"Step 2: Calling final LLM with SRL guidance for student {student_id}")
+    
+    return call_qwen_api(
+        final_messages, 
+        **AGENT_CONFIG['full_response']  # max_tokens=800, timeout=60
+    )
+
 
 def call_ai_ethics_llm(messages, student_id):
     """
@@ -188,7 +338,7 @@ def call_ai_ethics_llm(messages, student_id):
     user_message = messages[-1]['content'] if messages and messages[-1]['role'] == 'user' else ''
     
     if not user_message:
-        return call_qwen_api(messages)
+        return call_qwen_api(messages, **AGENT_CONFIG['full_response'])
     
     # ========== 步骤1: 调用 AI Ethics Instruction Agent ==========
     ethics_agent_prompt = {
@@ -212,7 +362,10 @@ def call_ai_ethics_llm(messages, student_id):
     logger.info(f"Step 1: Calling AI Ethics Instruction Agent for student {student_id}")
     
     try:
-        ethics_response = call_qwen_api(ethics_agent_messages)
+        ethics_response = call_qwen_api(
+            ethics_agent_messages, 
+            **AGENT_CONFIG['short_instruction']  # max_tokens=300, timeout=30
+        )
         ethics_instruction = ethics_response['choices'][0]['message']['content'].strip()
         logger.info(f"AI Ethics Instruction generated: {ethics_instruction[:100]}...")
     except Exception as e:
@@ -240,7 +393,6 @@ def call_ai_ethics_llm(messages, student_id):
     }
     
     # 构建最终的消息列表
-    # 包含对话历史(不含最后一条用户消息) + 新的系统提示 + 最后一条用户消息
     final_messages = [final_system_prompt]
     
     # 添加历史对话(排除最后一条,因为我们要重新添加)
@@ -259,7 +411,11 @@ def call_ai_ethics_llm(messages, student_id):
     
     logger.info(f"Step 2: Calling final LLM with AI Ethics guidance for student {student_id}")
     
-    return call_qwen_api(final_messages)
+    return call_qwen_api(
+        final_messages, 
+        **AGENT_CONFIG['full_response']  # max_tokens=800, timeout=60
+    )
+
 
 def call_srl_and_ethics_llm(messages, student_id):
     """
@@ -275,7 +431,7 @@ def call_srl_and_ethics_llm(messages, student_id):
     user_message = messages[-1]['content'] if messages and messages[-1]['role'] == 'user' else ''
     
     if not user_message:
-        return call_qwen_api(messages)
+        return call_qwen_api(messages, **AGENT_CONFIG['full_response'])
     
     # ========== 步骤1: 调用 AI Ethics Instruction Agent ==========
     ethics_agent_prompt = {
@@ -299,7 +455,10 @@ def call_srl_and_ethics_llm(messages, student_id):
     logger.info(f"Step 1: Calling AI Ethics Instruction Agent for student {student_id}")
     
     try:
-        ethics_response = call_qwen_api(ethics_agent_messages)
+        ethics_response = call_qwen_api(
+            ethics_agent_messages, 
+            **AGENT_CONFIG['short_instruction']  # max_tokens=300, timeout=30
+        )
         ethics_instruction = ethics_response['choices'][0]['message']['content'].strip()
         logger.info(f"AI Ethics Instruction generated: {ethics_instruction[:100]}...")
     except Exception as e:
@@ -334,7 +493,10 @@ AI伦理指导建议:
     logger.info(f"Step 2: Calling SRL Instruction Agent to adjust ethics guidance for student {student_id}")
     
     try:
-        srl_response = call_qwen_api(srl_agent_messages)
+        srl_response = call_qwen_api(
+            srl_agent_messages, 
+            **AGENT_CONFIG['medium_instruction']  # max_tokens=400, timeout=30
+        )
         final_instruction = srl_response['choices'][0]['message']['content'].strip()
         logger.info(f"Final SRL-adjusted instruction generated: {final_instruction[:100]}...")
     except Exception as e:
@@ -379,39 +541,19 @@ AI伦理指导建议:
     
     logger.info(f"Step 3: Calling final LLM with integrated SRL+Ethics guidance for student {student_id}")
     
-    return call_qwen_api(final_messages)
+    return call_qwen_api(
+        final_messages, 
+        **AGENT_CONFIG['full_response']  # max_tokens=800, timeout=60
+    )
+
 
 def call_original_llm(messages, student_id):
     """
     Group 4: 原始LLM（对照组）
     不添加任何特殊的系统提示词
     """
-    return call_qwen_api(messages)
+    return call_qwen_api(messages, **AGENT_CONFIG['full_response'])
 
-def call_qwen_api(messages):
-    """调用通义千问API"""
-    headers = {
-        'Authorization': f'Bearer {API_KEY}',
-        'Content-Type': 'application/json'
-    }
-    
-    api_data = {
-        'model': 'qwen-plus',
-        'messages': messages,
-        'temperature': 0.7,
-        'max_tokens': 800,
-        'top_p': 0.9
-    }
-    
-    response = requests.post(
-        API_BASE_URL, 
-        headers=headers, 
-        json=api_data, 
-        timeout=30
-    )
-    response.raise_for_status()
-    
-    return response.json()
 
 def route_llm_call(llm_type, messages, student_id):
     """根据组类型路由到对应的LLM调用函数"""
@@ -569,7 +711,7 @@ def export_conversations():
             output,
             mimetype='text/csv',
             as_attachment=True,
-            download_name=f'conversations_{datetime.utcnow().strftime("%Y%m%d_%H%M%S")}.csv'
+            download_name=f'conversations_{datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")}.csv'
         )
     except Exception as e:
         logger.error(f"Export error: {e}")
@@ -599,7 +741,7 @@ def export_messages():
             output,
             mimetype='text/csv',
             as_attachment=True,
-            download_name=f'messages_{datetime.utcnow().strftime("%Y%m%d_%H%M%S")}.csv'
+            download_name=f'messages_{datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")}.csv'
         )
     except Exception as e:
         logger.error(f"Export error: {e}")
@@ -629,7 +771,7 @@ def export_statistics():
             output,
             mimetype='text/csv',
             as_attachment=True,
-            download_name=f'statistics_{datetime.utcnow().strftime("%Y%m%d_%H%M%S")}.csv'
+            download_name=f'statistics_{datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")}.csv'
         )
     except Exception as e:
         logger.error(f"Export error: {e}")

@@ -1,6 +1,6 @@
 import os
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 import logging
 import requests
 
@@ -150,7 +150,7 @@ class RedisDB:
             student = self.get_student(student_id)
             if student:
                 student['login_count'] = student.get('login_count', 0) + 1
-                student['last_login_at'] = datetime.utcnow().isoformat()
+                student['last_login_at'] = datetime.now(timezone.utc).isoformat()
                 self.save_student(student_id, student)
             return student
         except Exception as e:
@@ -173,7 +173,7 @@ class RedisDB:
                 'group_name': group_info.get('group_name') if group_info else 'unknown',
                 'llm_type': llm_type,
                 'title': title,
-                'created_at': datetime.utcnow().isoformat(),
+                'created_at': datetime.now(timezone.utc).isoformat(),
                 'message_count': 0,
                 'messages': []
             }
@@ -210,7 +210,7 @@ class RedisDB:
             message = {
                 'role': role,
                 'content': content,
-                'timestamp': datetime.utcnow().isoformat(),
+                'timestamp': datetime.now(timezone.utc).isoformat(),
                 'word_count': word_count
             }
             

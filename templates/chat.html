@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dialogue with Socrates</title>
+    <title>AI 学习助手</title>
     <style>
         * {
             margin: 0;
@@ -12,70 +12,179 @@
         }
 
         body {
-            font-family: 'Georgia', 'Times New Roman', serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            padding: 20px;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+            background-color: #f7f7f8;
+            color: #333;
+            height: 100vh;
+            overflow: hidden;
         }
 
-        .container {
-            width: 100%;
-            max-width: 900px;
-            background: white;
-            border-radius: 20px;
-            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
-            overflow: hidden;
+        .app-container {
+            display: flex;
+            height: 100vh;
+        }
+
+        /* 左侧边栏 */
+        .sidebar {
+            width: 280px;
+            background-color: #202123;
+            color: #ececf1;
             display: flex;
             flex-direction: column;
-            height: 85vh;
+            border-right: 1px solid #565869;
         }
 
-        .header {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            padding: 25px;
-            text-align: center;
-            position: relative;
+        .sidebar-header {
+            padding: 16px;
+            border-bottom: 1px solid #565869;
         }
 
-        .header h1 {
-            font-size: 28px;
-            margin-bottom: 8px;
-            font-weight: 600;
-        }
-
-        .header p {
+        .sidebar-header h2 {
             font-size: 14px;
-            opacity: 0.95;
-            font-style: italic;
+            font-weight: 600;
+            margin-bottom: 12px;
         }
 
-        .progress-indicator {
-            position: absolute;
-            top: 10px;
-            right: 20px;
-            background: rgba(255, 255, 255, 0.2);
-            padding: 8px 16px;
-            border-radius: 15px;
+        .new-chat-btn {
+            width: 100%;
+            padding: 12px;
+            background-color: transparent;
+            border: 1px solid #565869;
+            color: #ececf1;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.2s;
+        }
+
+        .new-chat-btn:hover {
+            background-color: #40414f;
+        }
+
+        .student-info {
+            padding: 16px;
+            border-bottom: 1px solid #565869;
+        }
+
+        .student-info label {
+            display: block;
             font-size: 12px;
+            margin-bottom: 6px;
+            color: #8e8ea0;
+        }
+
+        .student-info input {
+            width: 100%;
+            padding: 8px 12px;
+            background-color: #40414f;
+            border: 1px solid #565869;
+            border-radius: 6px;
+            color: #ececf1;
+            font-size: 14px;
+        }
+
+        .student-info input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .session-list {
+            flex: 1;
+            overflow-y: auto;
+            padding: 8px;
+        }
+
+        .session-item {
+            padding: 12px;
+            margin-bottom: 4px;
+            background-color: transparent;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .session-item:hover {
+            background-color: #2a2b32;
+        }
+
+        .session-item.active {
+            background-color: #343541;
+        }
+
+        .session-title {
+            font-size: 14px;
+            color: #ececf1;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .session-info {
+            font-size: 11px;
+            color: #8e8ea0;
+            margin-top: 4px;
+        }
+
+        /* 主内容区域 */
+        .main-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background-color: #fff;
+        }
+
+        .chat-header {
+            padding: 16px 24px;
+            border-bottom: 1px solid #e5e5e5;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .chat-header h1 {
+            font-size: 20px;
             font-weight: 600;
-            display: none; /* 隐藏进度指示器 */
+            color: #202123;
+        }
+
+        .delete-btn {
+            padding: 8px 16px;
+            background-color: #ef4444;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.2s;
+            display: none;
+        }
+
+        .delete-btn:hover {
+            background-color: #dc2626;
         }
 
         .chat-container {
             flex: 1;
             overflow-y: auto;
-            padding: 25px;
+            padding: 24px;
             background: #f8f9fa;
         }
 
+        .welcome-message {
+            text-align: center;
+            padding: 48px 24px;
+            color: #6b7280;
+        }
+
+        .welcome-message h2 {
+            font-size: 28px;
+            margin-bottom: 12px;
+            color: #202123;
+        }
+
         .message {
-            display: flex;
-            margin-bottom: 20px;
-            animation: fadeIn 0.5s ease;
+            margin-bottom: 24px;
+            animation: fadeIn 0.3s ease-in;
         }
 
         @keyframes fadeIn {
@@ -89,522 +198,500 @@
             }
         }
 
-        .message.user {
-            justify-content: flex-end;
-        }
-
-        .message-content {
-            max-width: 70%;
-            padding: 15px 20px;
-            border-radius: 18px;
-            line-height: 1.6;
-            font-size: 15px;
-            position: relative;
-        }
-
-        .user .message-content {
-            background: #667eea;
-            color: white;
-            border-bottom-right-radius: 4px;
-        }
-
-        .socrates {
+        .message-header {
             display: flex;
-            align-items: flex-start;
-            gap: 12px;
+            align-items: center;
+            margin-bottom: 8px;
         }
 
-        .avatar {
-            width: 50px;
-            height: 50px;
-            border-radius: 50%;
-            border: 3px solid #764ba2;
-            object-fit: cover;
-            flex-shrink: 0;
-        }
-
-        .socrates .message-content {
-            background: white;
-            color: #333;
-            border: 1px solid #e0e0e0;
-            border-bottom-left-radius: 4px;
-            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
-        }
-
-        .phase-indicator {
-            position: absolute;
-            top: -8px;
-            left: 15px;
-            background: #764ba2;
-            color: white;
-            padding: 2px 8px;
-            border-radius: 10px;
-            font-size: 10px;
+        .message-role {
             font-weight: 600;
-            display: none; /* 隐藏阶段指示器 */
-        }
-
-        .input-area {
-            padding: 20px;
-            background: white;
-            border-top: 1px solid #e0e0e0;
-            display: flex;
-            gap: 12px;
-            position: relative;
-        }
-
-        .input-area input {
-            flex: 1;
-            padding: 15px 20px;
-            border: 2px solid #e0e0e0;
-            border-radius: 25px;
-            font-size: 15px;
-            outline: none;
-            transition: border-color 0.3s;
-            font-family: 'Georgia', 'Times New Roman', serif;
-        }
-
-        .input-area input:focus {
-            border-color: #667eea;
-        }
-
-        .input-area button {
-            padding: 15px 35px;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            border: none;
-            border-radius: 25px;
-            font-size: 15px;
-            cursor: pointer;
-            transition: transform 0.2s, box-shadow 0.2s;
-            font-weight: 600;
-        }
-
-        .input-area button:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
-        }
-
-        .input-area button:disabled {
-            opacity: 0.6;
-            cursor: not-allowed;
-        }
-
-        .loading {
-            display: inline-block;
-            width: 8px;
-            height: 8px;
-            border-radius: 50%;
-            background: #764ba2;
-            animation: pulse 1.2s infinite;
-        }
-
-        @keyframes pulse {
-            0%, 100% {
-                opacity: 0.3;
-            }
-            50% {
-                opacity: 1;
-            }
-        }
-
-        .welcome-message {
-            text-align: center;
-            color: #666;
-            padding: 40px;
-            font-style: italic;
-        }
-
-        .dialogue-complete {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            padding: 20px;
-            border-radius: 15px;
-            margin: 20px 0;
-            text-align: center;
-        }
-
-        .dialogue-actions {
-            display: flex;
-            gap: 10px;
-            justify-content: center;
-            margin-top: 15px;
-        }
-
-        .dialogue-actions button {
-            padding: 10px 20px;
-            border: 2px solid white;
-            background: transparent;
-            color: white;
-            border-radius: 20px;
-            cursor: pointer;
             font-size: 14px;
-            transition: all 0.3s;
+            color: #202123;
         }
 
-        .dialogue-actions button:hover {
-            background: white;
+        .message.user .message-role {
+            color: #667eea;
+        }
+
+        .message.assistant .message-role {
             color: #764ba2;
         }
 
-        .session-info {
-            position: absolute;
-            bottom: 10px;
-            right: 20px;
-            font-size: 11px;
-            opacity: 0.7;
-            display: none; /* 隐藏会话信息 */
+        .message-content {
+            padding: 12px 16px;
+            background-color: #f7f7f8;
+            border-radius: 8px;
+            line-height: 1.6;
+            font-size: 15px;
+            color: #202123;
+            white-space: pre-wrap;
+            word-wrap: break-word;
         }
 
-        /* Scrollbar styles */
+        .message.user .message-content {
+            background-color: #667eea;
+            color: white;
+        }
+
+        .message.assistant .message-content {
+            background-color: #f0f0f0;
+        }
+
+        .message-time {
+            font-size: 11px;
+            color: #8e8ea0;
+            margin-left: 8px;
+        }
+
+        .typing-indicator {
+            display: flex;
+            align-items: center;
+            padding: 12px 16px;
+            background-color: #f0f0f0;
+            border-radius: 8px;
+            width: fit-content;
+        }
+
+        .typing-indicator span {
+            height: 8px;
+            width: 8px;
+            background-color: #764ba2;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 4px;
+            animation: typing 1.4s infinite;
+        }
+
+        .typing-indicator span:nth-child(2) {
+            animation-delay: 0.2s;
+        }
+
+        .typing-indicator span:nth-child(3) {
+            animation-delay: 0.4s;
+        }
+
+        @keyframes typing {
+            0%, 60%, 100% {
+                transform: translateY(0);
+            }
+            30% {
+                transform: translateY(-10px);
+            }
+        }
+
+        /* 输入区域 */
+        .input-area {
+            padding: 16px 24px;
+            background-color: #fff;
+            border-top: 1px solid #e5e5e5;
+        }
+
+        .input-wrapper {
+            display: flex;
+            align-items: flex-end;
+            max-width: 900px;
+            margin: 0 auto;
+            background-color: #f7f7f8;
+            border-radius: 12px;
+            padding: 8px 12px;
+            border: 1px solid #e5e5e5;
+        }
+
+        .input-wrapper:focus-within {
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        #userInput {
+            flex: 1;
+            border: none;
+            background: transparent;
+            resize: none;
+            font-size: 15px;
+            line-height: 1.5;
+            padding: 8px;
+            max-height: 200px;
+            font-family: inherit;
+            color: #202123;
+        }
+
+        #userInput:focus {
+            outline: none;
+        }
+
+        #sendBtn {
+            background-color: #667eea;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            width: 36px;
+            height: 36px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.2s;
+            flex-shrink: 0;
+            margin-left: 8px;
+        }
+
+        #sendBtn:hover {
+            background-color: #5568d3;
+        }
+
+        #sendBtn:disabled {
+            background-color: #d1d5db;
+            cursor: not-allowed;
+        }
+
+        /* 滚动条样式 */
+        .session-list::-webkit-scrollbar,
         .chat-container::-webkit-scrollbar {
             width: 8px;
         }
 
-        .chat-container::-webkit-scrollbar-track {
-            background: #f1f1f1;
+        .session-list::-webkit-scrollbar-track {
+            background: transparent;
         }
 
-        .chat-container::-webkit-scrollbar-thumb {
-            background: #667eea;
+        .session-list::-webkit-scrollbar-thumb {
+            background: #565869;
             border-radius: 4px;
         }
 
-        .chat-container::-webkit-scrollbar-thumb:hover {
-            background: #764ba2;
+        .chat-container::-webkit-scrollbar-thumb {
+            background: #d1d5db;
+            border-radius: 4px;
         }
     </style>
 </head>
 <body>
-    <div class="container">
-        <div class="header">
-            <h1>Dialogue with Socrates</h1>
-            <p>"I know that I know nothing" - Socrates</p>
-            <div class="progress-indicator" id="progressIndicator">Round 1 • Exploration</div>
-            <div class="session-info" id="sessionInfo">Session: New</div>
-        </div>
-        
-        <div class="chat-container" id="chatContainer">
-            <div class="welcome-message">
-                <p>Welcome to the Socratic Dialogue Chamber</p>
-                <p>Let us explore truth and wisdom together through inquiry</p>
+    <div class="app-container">
+        <!-- 左侧边栏 -->
+        <div class="sidebar">
+            <div class="sidebar-header">
+                <h2>对话历史</h2>
+                <button class="new-chat-btn" onclick="createNewChat()">+ 新对话</button>
+            </div>
+            
+            <div class="student-info">
+                <label for="studentId">学号:</label>
+                <input type="text" id="studentId" placeholder="输入学号" value="default">
+            </div>
+            
+            <div id="sessionList" class="session-list">
+                <!-- 会话列表动态加载 -->
             </div>
         </div>
-        
-        <div class="input-area">
-            <input type="text" id="userInput" placeholder="Ask your question..." />
-            <button id="sendBtn" onclick="sendMessage()">Send</button>
+
+        <!-- 主聊天区域 -->
+        <div class="main-content">
+            <div class="chat-header">
+                <h1>AI 学习助手</h1>
+                <button id="deleteBtn" class="delete-btn" onclick="deleteCurrentChat()">删除对话</button>
+            </div>
+
+            <div id="chatContainer" class="chat-container">
+                <div class="welcome-message">
+                    <h2>👋 欢迎使用AI学习助手</h2>
+                    <p>我可以帮助你解答学习中的问题，开始新的对话吧！</p>
+                </div>
+            </div>
+
+            <div class="input-area">
+                <div class="input-wrapper">
+                    <textarea 
+                        id="userInput" 
+                        placeholder="输入你的问题..."
+                        rows="1"
+                    ></textarea>
+                    <button id="sendBtn">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                            <path d="M22 2L11 13" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                            <path d="M22 2L15 22L11 13L2 9L22 2Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                    </button>
+                </div>
+            </div>
         </div>
     </div>
 
     <script>
-        // === CONVERSATION MEMORY SYSTEM ===
-        class ConversationMemory {
-            constructor() {
-                this.history = [];
-                this.currentRound = 1;
-                this.dialoguePhase = 'exploration';
-                this.sessionId = this.generateSessionId();
-                
-                // 🔥 移除：不再从localStorage加载
-                // this.loadFromStorage();
-                
-                // 🔥 新增：清空任何旧的存储数据
-                this.clearStorage();
-            }
+        // 全局状态
+        let currentSessionId = null;
+        let studentId = 'default';
+        let chatSessions = {};
 
-            generateSessionId() {
-                return 'session_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
-            }
-
-            addMessage(content, isUser) {
-                const message = {
-                    content,
-                    isUser,
-                    timestamp: Date.now(),
-                    round: this.currentRound
-                };
-                
-                this.history.push(message);
-                
-                if (!isUser) {
-                    this.currentRound++;
-                    this.updateDialoguePhase();
-                }
-                
-                // 🔥 移除：不再保存到localStorage
-                // this.saveToStorage();
-                this.updateUI();
-            }
-
-            updateDialoguePhase() {
-                if (this.currentRound <= 2) {
-                    this.dialoguePhase = 'exploration';
-                } else if (this.currentRound <= 4) {
-                    this.dialoguePhase = 'examination';
-                } else if (this.currentRound <= 5) {
-                    this.dialoguePhase = 'deepening';
-                } else {
-                    this.dialoguePhase = 'synthesis';
-                }
-            }
-
-            getPhaseDescription() {
-                const phases = {
-                    'exploration': 'Exploration',
-                    'examination': 'Examination', 
-                    'deepening': 'Deepening',
-                    'synthesis': 'Synthesis'
-                };
-                return phases[this.dialoguePhase];
-            }
-
-            shouldEndDialogue() {
-                return this.currentRound > 6;
-            }
-
-            getContextForAPI() {
-                // Send last 5 rounds for API context (10 messages max)
-                const recentHistory = this.history.slice(-10);
-                return recentHistory.map(msg => ({
-                    role: msg.isUser ? 'user' : 'assistant',
-                    content: msg.content
-                }));
-            }
-
-            getMetadata() {
-                return {
-                    round: this.currentRound,
-                    phase: this.dialoguePhase,
-                    phaseDescription: this.getPhaseDescription(),
-                    shouldEnd: this.shouldEndDialogue()
-                };
-            }
-
-            clearStorage() {
-                try {
-                    localStorage.removeItem('socrates_conversation');
-                    console.log('Cleared previous conversation data');
-                } catch (e) {
-                    console.log('Could not clear storage:', e);
-                }
-            }
-
-            updateUI() {
-                const progress = document.getElementById('progressIndicator');
-                if (progress) {
-                    progress.textContent = `Round ${this.currentRound} • ${this.getPhaseDescription()}`;
-                }
-                
-                const sessionInfo = document.getElementById('sessionInfo');
-                if (sessionInfo) {
-                    sessionInfo.textContent = `Session: New`;
-                }
-            }
-
-            newDialogue() {
-                this.history = [];
-                this.currentRound = 1;
-                this.dialoguePhase = 'exploration';
-                this.sessionId = this.generateSessionId();
-                this.clearStorage(); // 清空存储
-                this.updateUI();
-                
-                // Clear chat display
-                const chatContainer = document.getElementById('chatContainer');
-                chatContainer.innerHTML = `
-                    <div class="welcome-message">
-                        <p>Starting a new Socratic dialogue...</p>
-                        <p>What shall we explore together?</p>
-                    </div>
-                `;
-            }
-        }
-
-
-        // === MAIN APPLICATION ===
-        const memory = new ConversationMemory();
+        // DOM元素
         const chatContainer = document.getElementById('chatContainer');
         const userInput = document.getElementById('userInput');
         const sendBtn = document.getElementById('sendBtn');
+        const sessionList = document.getElementById('sessionList');
+        const deleteBtn = document.getElementById('deleteBtn');
+        const studentIdInput = document.getElementById('studentId');
 
-        // Initialize UI on page load
+        // 初始化
         window.onload = function() {
             userInput.focus();
-            memory.updateUI();
-            console.log('Started fresh conversation - no history restored');
-
+            loadSessions();
         };
 
-        function restoreConversation() {
-            removeWelcome();
-            memory.history.forEach(msg => {
-                displayMessage(msg.content, msg.isUser, msg.round);
-            });
-            
-            // Check if dialogue should end
-            if (memory.shouldEndDialogue()) {
-                showDialogueComplete();
+        // 自动调整输入框高度
+        userInput.addEventListener('input', () => {
+            userInput.style.height = 'auto';
+            userInput.style.height = userInput.scrollHeight + 'px';
+        });
+
+        // Enter发送消息
+        userInput.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendMessage();
             }
-        }
+        });
 
-        function removeWelcome() {
-            const welcome = document.querySelector('.welcome-message');
-            if (welcome) {
-                welcome.remove();
-            }
-        }
+        // 学号变更
+        studentIdInput.addEventListener('change', (e) => {
+            studentId = e.target.value || 'default';
+            loadSessions();
+            clearChat();
+        });
 
-        function displayMessage(content, isUser = false, round = null) {
-            removeWelcome();
-            
-            const messageDiv = document.createElement('div');
-            messageDiv.className = `message ${isUser ? 'user' : 'socrates'}`;
-            
-            if (isUser) {
-                messageDiv.innerHTML = `
-                    <div class="message-content">${content}</div>
-                `;
-            } else {
-                // 不显示阶段标签，但保留结构
-                messageDiv.innerHTML = `
-                    <img src="static/socrates.jpg" alt="Socrates" class="avatar" onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%22100%22 height=%22100%22><rect fill=%22%23764ba2%22 width=%22100%22 height=%22100%22/><text x=%2250%%22 y=%2250%%22 text-anchor=%22middle%22 dy=%22.3em%22 fill=%22white%22 font-size=%2240%22>S</text></svg>'">
-                    <div class="message-content">
-                        ${content}
-                    </div>
-                `;
-            }
-            
-            chatContainer.appendChild(messageDiv);
-            chatContainer.scrollTop = chatContainer.scrollHeight;
-        }
-
-        function showLoading() {
-            removeWelcome();
-            
-            const loadingDiv = document.createElement('div');
-            loadingDiv.className = 'message socrates';
-            loadingDiv.id = 'loadingMessage';
-            loadingDiv.innerHTML = `
-                <img src="static/socrates.jpg" alt="Socrates" class="avatar" onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%22100%22 height=%22100%22><rect fill=%22%23764ba2%22 width=%22100%22 height=%22100%22/><text x=%2250%%22 y=%2250%%22 text-anchor=%22middle%22 dy=%22.3em%22 fill=%22white%22 font-size=%2240%22>S</text></svg>'">
-                <div class="message-content">
-                    <span class="loading"></span>
-                    <span class="loading" style="animation-delay: 0.2s;"></span>
-                    <span class="loading" style="animation-delay: 0.4s;"></span>
-                </div>
-            `;
-            chatContainer.appendChild(loadingDiv);
-            chatContainer.scrollTop = chatContainer.scrollHeight;
-        }
-
-        function removeLoading() {
-            const loading = document.getElementById('loadingMessage');
-            if (loading) {
-                loading.remove();
-            }
-        }
-
-        function showDialogueComplete() {
-            const completeDiv = document.createElement('div');
-            completeDiv.className = 'dialogue-complete';
-            completeDiv.innerHTML = `
-                <h3>🎯 Dialogue Complete</h3>
-                <p>Through our thoughtful exchange, we have explored new depths of understanding.</p>
-                <p><em>"The unexamined life is not worth living"</em></p>
-                <div class="dialogue-actions">
-                    <button onclick="continueDialogue()">Continue Exploring</button>
-                    <button onclick="newDialogue()">New Topic</button>
-                    <button onclick="relatedQuestion()">Related Question</button>
-                </div>
-            `;
-            chatContainer.appendChild(completeDiv);
-            chatContainer.scrollTop = chatContainer.scrollHeight;
-        }
-
-        function continueDialogue() {
-            document.querySelector('.dialogue-complete').remove();
-            // Reset round limit, continue with same topic
-            memory.currentRound = 1;
-            memory.dialoguePhase = 'exploration';
-            memory.updateUI();
-        }
-
-        function newDialogue() {
-            memory.newDialogue();
-        }
-
-        function relatedQuestion() {
-            document.querySelector('.dialogue-complete').remove();
-            displayMessage("What related question would you like to explore, given what we've discovered?", false, memory.currentRound);
-            memory.addMessage("What related question would you like to explore, given what we've discovered?", false);
-        }
-
+        // 发送消息
         async function sendMessage() {
             const message = userInput.value.trim();
             if (!message) return;
-            
-            // Add user message to memory and display
-            memory.addMessage(message, true);
+
+            // 显示用户消息
             displayMessage(message, true);
             userInput.value = '';
-            
-            // Check if we should end dialogue before sending
-            if (memory.shouldEndDialogue()) {
-                showDialogueComplete();
-                return;
-            }
-            
-            // Disable send button
+            userInput.style.height = 'auto';
+
+            // 显示输入指示器
+            showTypingIndicator();
+
+            // 禁用发送按钮
             sendBtn.disabled = true;
-            sendBtn.textContent = 'Thinking...';
-            
-            // Show loading
-            showLoading();
-            
+
             try {
                 const response = await fetch('/chat', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                     },
-                    body: JSON.stringify({ 
+                    body: JSON.stringify({
                         message: message,
-                        context: memory.getContextForAPI(),
-                        metadata: memory.getMetadata()
+                        context: currentSessionId && chatSessions[currentSessionId] 
+                            ? chatSessions[currentSessionId].messages.slice(-20) 
+                            : [],
+                        session_id: currentSessionId,
+                        student_id: studentId
                     })
                 });
-                
+
                 const data = await response.json();
-                
-                // Remove loading
-                removeLoading();
-                
+
+                removeTypingIndicator();
+
                 if (data.success) {
-                    memory.addMessage(data.reply, false);
-                    displayMessage(data.reply, false, memory.currentRound - 1);
-                    
-                    // Check if we should end dialogue after Socrates' response
-                    if (memory.shouldEndDialogue()) {
-                        showDialogueComplete();
+                    // 更新会话ID
+                    if (!currentSessionId) {
+                        currentSessionId = generateSessionId();
+                        chatSessions[currentSessionId] = {
+                            id: currentSessionId,
+                            title: message.substring(0, 30) + (message.length > 30 ? '...' : ''),
+                            created_at: new Date().toISOString(),
+                            messages: []
+                        };
+                        deleteBtn.style.display = 'block';
+                        loadSessions();
                     }
+
+                    // 保存消息
+                    if (chatSessions[currentSessionId]) {
+                        chatSessions[currentSessionId].messages.push(
+                            { role: 'user', content: message },
+                            { role: 'assistant', content: data.reply }
+                        );
+                    }
+
+                    // 显示AI回复
+                    displayMessage(data.reply, false);
                 } else {
-                    displayMessage('My apologies, something went wrong. Please try again.', false);
+                    displayMessage('抱歉，发生了错误：' + (data.error || '未知错误'), false);
                 }
             } catch (error) {
-                removeLoading();
-                displayMessage('Connection error. Please check your network and try again.', false);
+                console.error('Error:', error);
+                removeTypingIndicator();
+                displayMessage('连接错误，请检查网络后重试。', false);
             } finally {
                 sendBtn.disabled = false;
-                sendBtn.textContent = 'Send';
             }
         }
 
-        // Send on Enter
-        userInput.addEventListener('keypress', function(e) {
-            if (e.key === 'Enter') {
-                sendMessage();
+        // 显示消息
+        function displayMessage(content, isUser = false) {
+            const welcome = document.querySelector('.welcome-message');
+            if (welcome) welcome.remove();
+
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${isUser ? 'user' : 'assistant'}`;
+
+            const now = new Date();
+            const timeString = now.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+
+            messageDiv.innerHTML = `
+                <div class="message-header">
+                    <span class="message-role">${isUser ? '我' : 'AI助手'}</span>
+                    <span class="message-time">${timeString}</span>
+                </div>
+                <div class="message-content">${escapeHtml(content)}</div>
+            `;
+
+            chatContainer.appendChild(messageDiv);
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+        }
+
+        // 显示输入指示器
+        function showTypingIndicator() {
+            const indicator = document.createElement('div');
+            indicator.className = 'message assistant typing';
+            indicator.id = 'typingIndicator';
+            indicator.innerHTML = `
+                <div class="message-header">
+                    <span class="message-role">AI助手</span>
+                </div>
+                <div class="typing-indicator">
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                </div>
+            `;
+            chatContainer.appendChild(indicator);
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+        }
+
+        // 移除输入指示器
+        function removeTypingIndicator() {
+            const indicator = document.getElementById('typingIndicator');
+            if (indicator) indicator.remove();
+        }
+
+        // 加载会话列表
+        function loadSessions() {
+            const sessions = Object.values(chatSessions).filter(s => s.student_id === studentId);
+            sessions.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+
+            if (sessions.length === 0) {
+                sessionList.innerHTML = '<div style="padding: 16px; text-align: center; color: #8e8ea0; font-size: 14px;">暂无对话历史</div>';
+                return;
             }
-        });
+
+            sessionList.innerHTML = '';
+            sessions.forEach(session => {
+                const sessionItem = document.createElement('div');
+                sessionItem.className = 'session-item';
+                if (session.id === currentSessionId) {
+                    sessionItem.classList.add('active');
+                }
+
+                const createdDate = new Date(session.created_at);
+                const dateString = createdDate.toLocaleDateString('zh-CN', {
+                    month: '2-digit',
+                    day: '2-digit',
+                    hour: '2-digit',
+                    minute: '2-digit'
+                });
+
+                const messageCount = session.messages.filter(m => m.role === 'user').length;
+
+                sessionItem.innerHTML = `
+                    <div class="session-title">${escapeHtml(session.title)}</div>
+                    <div class="session-info">${dateString} · ${messageCount}条消息</div>
+                `;
+
+                sessionItem.addEventListener('click', () => loadSession(session.id));
+                sessionList.appendChild(sessionItem);
+            });
+        }
+
+        // 加载特定会话
+        function loadSession(sessionId) {
+            const session = chatSessions[sessionId];
+            if (!session) return;
+
+            currentSessionId = sessionId;
+            deleteBtn.style.display = 'block';
+
+            // 清空聊天区域
+            chatContainer.innerHTML = '';
+
+            // 显示所有消息
+            session.messages.forEach(msg => {
+                if (msg.role === 'user' || msg.role === 'assistant') {
+                    displayMessage(msg.content, msg.role === 'user');
+                }
+            });
+
+            // 更新会话列表选中状态
+            document.querySelectorAll('.session-item').forEach(item => {
+                item.classList.remove('active');
+            });
+            event.currentTarget.classList.add('active');
+        }
+
+        // 创建新对话
+        function createNewChat() {
+            currentSessionId = null;
+            chatSessions[generateSessionId()] = {
+                id: generateSessionId(),
+                student_id: studentId,
+                title: '新对话',
+                created_at: new Date().toISOString(),
+                messages: []
+            };
+            clearChat();
+            deleteBtn.style.display = 'none';
+            userInput.focus();
+        }
+
+        // 删除当前对话
+        function deleteCurrentChat() {
+            if (!currentSessionId) return;
+
+            if (!confirm('确定要删除这个对话吗？')) return;
+
+            delete chatSessions[currentSessionId];
+            currentSessionId = null;
+            deleteBtn.style.display = 'none';
+            clearChat();
+            loadSessions();
+        }
+
+        // 清空聊天区域
+        function clearChat() {
+            currentSessionId = null;
+            deleteBtn.style.display = 'none';
+            chatContainer.innerHTML = `
+                <div class="welcome-message">
+                    <h2>👋 欢迎使用AI学习助手</h2>
+                    <p>我可以帮助你解答学习中的问题，开始新的对话吧！</p>
+                </div>
+            `;
+        }
+
+        // 生成会话ID
+        function generateSessionId() {
+            return 'session_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+        }
+
+        // HTML转义
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
     </script>
 </body>
 </html>

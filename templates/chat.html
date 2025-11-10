@@ -64,28 +64,72 @@
         .student-info {
             padding: 16px;
             border-bottom: 1px solid #565869;
+            background-color: #2a2b32;
         }
 
-        .student-info label {
+        .student-info-item {
+            margin-bottom: 8px;
+            font-size: 13px;
+        }
+
+        .student-info-item label {
             display: block;
-            font-size: 12px;
-            margin-bottom: 6px;
+            font-size: 11px;
+            margin-bottom: 4px;
             color: #8e8ea0;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
         }
 
-        .student-info input {
-            width: 100%;
-            padding: 8px 12px;
-            background-color: #40414f;
-            border: 1px solid #565869;
-            border-radius: 6px;
+        .student-info-item .value {
             color: #ececf1;
-            font-size: 14px;
+            font-weight: 500;
         }
 
-        .student-info input:focus {
-            outline: none;
-            border-color: #667eea;
+        .group-badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 600;
+            margin-top: 4px;
+        }
+
+        .group-badge.group1 {
+            background-color: #3b82f6;
+            color: white;
+        }
+
+        .group-badge.group2 {
+            background-color: #10b981;
+            color: white;
+        }
+
+        .group-badge.group3 {
+            background-color: #8b5cf6;
+            color: white;
+        }
+
+        .group-badge.group4 {
+            background-color: #6b7280;
+            color: white;
+        }
+
+        .logout-btn {
+            width: 100%;
+            padding: 8px;
+            margin-top: 8px;
+            background-color: #374151;
+            border: none;
+            color: #ececf1;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: all 0.2s;
+        }
+
+        .logout-btn:hover {
+            background-color: #4b5563;
         }
 
         .session-list {
@@ -139,12 +183,13 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
         }
 
         .chat-header h1 {
             font-size: 20px;
             font-weight: 600;
-            color: #202123;
+            color: white;
         }
 
         .delete-btn {
@@ -180,6 +225,23 @@
             font-size: 28px;
             margin-bottom: 12px;
             color: #202123;
+        }
+
+        .welcome-message .group-info {
+            margin-top: 24px;
+            padding: 16px;
+            background-color: #f3f4f6;
+            border-radius: 8px;
+            text-align: left;
+            max-width: 500px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        .welcome-message .group-info h3 {
+            font-size: 16px;
+            margin-bottom: 8px;
+            color: #374151;
         }
 
         .message {
@@ -280,75 +342,84 @@
             }
         }
 
-        /* 输入区域 */
         .input-area {
             padding: 16px 24px;
-            background-color: #fff;
             border-top: 1px solid #e5e5e5;
+            background-color: #fff;
         }
 
         .input-wrapper {
             display: flex;
+            gap: 12px;
             align-items: flex-end;
-            max-width: 900px;
+            max-width: 1000px;
             margin: 0 auto;
-            background-color: #f7f7f8;
-            border-radius: 12px;
-            padding: 8px 12px;
-            border: 1px solid #e5e5e5;
-        }
-
-        .input-wrapper:focus-within {
-            border-color: #667eea;
-            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
         }
 
         #userInput {
             flex: 1;
-            border: none;
-            background: transparent;
-            resize: none;
+            padding: 12px 16px;
+            border: 2px solid #e5e5e5;
+            border-radius: 8px;
             font-size: 15px;
-            line-height: 1.5;
-            padding: 8px;
-            max-height: 200px;
             font-family: inherit;
-            color: #202123;
+            resize: none;
+            min-height: 50px;
+            max-height: 200px;
+            line-height: 1.5;
+            transition: border-color 0.2s;
         }
 
         #userInput:focus {
             outline: none;
+            border-color: #667eea;
         }
 
         #sendBtn {
-            background-color: #667eea;
+            padding: 12px 24px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
             border: none;
             border-radius: 8px;
-            width: 36px;
-            height: 36px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
+            font-size: 15px;
+            font-weight: 600;
             cursor: pointer;
             transition: all 0.2s;
-            flex-shrink: 0;
-            margin-left: 8px;
+            white-space: nowrap;
         }
 
-        #sendBtn:hover {
-            background-color: #5568d3;
+        #sendBtn:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+        }
+
+        #sendBtn:active:not(:disabled) {
+            transform: translateY(0);
         }
 
         #sendBtn:disabled {
-            background-color: #d1d5db;
+            background: #9ca3af;
             cursor: not-allowed;
+            transform: none;
         }
 
         /* 滚动条样式 */
-        .session-list::-webkit-scrollbar,
-        .chat-container::-webkit-scrollbar {
+        .chat-container::-webkit-scrollbar,
+        .session-list::-webkit-scrollbar {
             width: 8px;
+        }
+
+        .chat-container::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        .chat-container::-webkit-scrollbar-thumb {
+            background-color: #cbd5e1;
+            border-radius: 4px;
+        }
+
+        .chat-container::-webkit-scrollbar-thumb:hover {
+            background-color: #94a3b8;
         }
 
         .session-list::-webkit-scrollbar-track {
@@ -356,12 +427,7 @@
         }
 
         .session-list::-webkit-scrollbar-thumb {
-            background: #565869;
-            border-radius: 4px;
-        }
-
-        .chat-container::-webkit-scrollbar-thumb {
-            background: #d1d5db;
+            background-color: #4b5563;
             border-radius: 4px;
         }
     </style>
@@ -374,28 +440,47 @@
                 <h2>对话历史</h2>
                 <button class="new-chat-btn" onclick="createNewChat()">+ 新对话</button>
             </div>
-            
+
+            <!-- 学生信息 -->
             <div class="student-info">
-                <label for="studentId">学号:</label>
-                <input type="text" id="studentId" placeholder="输入学号" value="default">
+                <div class="student-info-item">
+                    <label>学号</label>
+                    <div class="value" id="displayStudentId">-</div>
+                </div>
+                <div class="student-info-item">
+                    <label>实验组</label>
+                    <div class="value">
+                        <span id="displayGroupName">-</span>
+                        <span class="group-badge" id="groupBadge">-</span>
+                    </div>
+                </div>
+                <button class="logout-btn" onclick="logout()">退出登录</button>
             </div>
-            
-            <div id="sessionList" class="session-list">
-                <!-- 会话列表动态加载 -->
+
+            <div class="session-list" id="sessionList">
+                <div style="padding: 16px; text-align: center; color: #8e8ea0; font-size: 14px;">
+                    暂无对话历史
+                </div>
             </div>
         </div>
 
-        <!-- 主聊天区域 -->
+        <!-- 主内容区域 -->
         <div class="main-content">
             <div class="chat-header">
-                <h1>AI 学习助手</h1>
-                <button id="deleteBtn" class="delete-btn" onclick="deleteCurrentChat()">删除对话</button>
+                <h1>🎓 AI学习助手</h1>
+                <button class="delete-btn" id="deleteBtn" onclick="deleteCurrentChat()">
+                    删除对话
+                </button>
             </div>
 
-            <div id="chatContainer" class="chat-container">
+            <div class="chat-container" id="chatContainer">
                 <div class="welcome-message">
                     <h2>👋 欢迎使用AI学习助手</h2>
                     <p>我可以帮助你解答学习中的问题，开始新的对话吧！</p>
+                    <div class="group-info" id="welcomeGroupInfo">
+                        <h3>你的实验组信息</h3>
+                        <p id="groupDescription">加载中...</p>
+                    </div>
                 </div>
             </div>
 
@@ -403,25 +488,24 @@
                 <div class="input-wrapper">
                     <textarea 
                         id="userInput" 
-                        placeholder="输入你的问题..."
+                        placeholder="输入你的问题..." 
                         rows="1"
                     ></textarea>
-                    <button id="sendBtn">
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-                            <path d="M22 2L11 13" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-                            <path d="M22 2L15 22L11 13L2 9L22 2Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                        </svg>
-                    </button>
+                    <button id="sendBtn" onclick="sendMessage()">发送</button>
                 </div>
             </div>
         </div>
     </div>
 
     <script>
-        // 全局状态
+        // 全局变量
         let currentSessionId = null;
-        let studentId = 'default';
         let chatSessions = {};
+        let studentId = '';
+        let studentGroup = '';
+        let groupName = '';
+        let llmType = 'original';
+        let groupDescription = '';
 
         // DOM元素
         const chatContainer = document.getElementById('chatContainer');
@@ -429,10 +513,56 @@
         const sendBtn = document.getElementById('sendBtn');
         const sessionList = document.getElementById('sessionList');
         const deleteBtn = document.getElementById('deleteBtn');
-        const studentIdInput = document.getElementById('studentId');
+
+        // 检查登录状态
+        function checkLogin() {
+            const loggedIn = sessionStorage.getItem('student_logged_in');
+            
+            if (!loggedIn) {
+                window.location.href = '/login';
+                return false;
+            }
+            
+            // 加载学生信息
+            studentId = sessionStorage.getItem('student_id') || '';
+            studentGroup = sessionStorage.getItem('student_group') || '';
+            groupName = sessionStorage.getItem('group_name') || '';
+            llmType = sessionStorage.getItem('llm_type') || 'original';
+            groupDescription = sessionStorage.getItem('group_description') || '';
+            
+            // 显示学生信息
+            document.getElementById('displayStudentId').textContent = studentId;
+            document.getElementById('displayGroupName').textContent = groupName;
+            
+            const groupBadge = document.getElementById('groupBadge');
+            groupBadge.textContent = studentGroup.toUpperCase();
+            groupBadge.className = 'group-badge ' + studentGroup;
+            
+            // 更新欢迎信息中的组描述
+            const descriptions = {
+                'srl': '你在SRL辅助组，AI助手会帮助你设定学习目标、监控学习进度，并引导你反思学习策略。',
+                'ai_ethics': '你在AI Ethics辅助组，AI助手会引导你思考AI技术的伦理问题，培养批判性思维。',
+                'srl_and_ethics': '你在SRL+Ethics辅助组，AI助手会同时提供自我调节学习支持和AI伦理教育引导。',
+                'original': '你在对照组，使用原始AI助手，没有特殊的辅助功能。'
+            };
+            
+            document.getElementById('groupDescription').textContent = descriptions[llmType] || '加载中...';
+            
+            return true;
+        }
+
+        // 登出
+        function logout() {
+            if (confirm('确定要退出登录吗？')) {
+                sessionStorage.clear();
+                window.location.href = '/login';
+            }
+        }
 
         // 初始化
         window.onload = function() {
+            if (!checkLogin()) return;
+            
             userInput.focus();
             loadSessions();
         };
@@ -449,13 +579,6 @@
                 e.preventDefault();
                 sendMessage();
             }
-        });
-
-        // 学号变更
-        studentIdInput.addEventListener('change', (e) => {
-            studentId = e.target.value || 'default';
-            loadSessions();
-            clearChat();
         });
 
         // 发送消息
@@ -486,7 +609,8 @@
                             ? chatSessions[currentSessionId].messages.slice(-20) 
                             : [],
                         session_id: currentSessionId,
-                        student_id: studentId
+                        student_id: studentId,
+                        llm_type: llmType
                     })
                 });
 
@@ -502,7 +626,9 @@
                             id: currentSessionId,
                             title: message.substring(0, 30) + (message.length > 30 ? '...' : ''),
                             created_at: new Date().toISOString(),
-                            messages: []
+                            messages: [],
+                            student_id: studentId,
+                            llm_type: llmType
                         };
                         deleteBtn.style.display = 'block';
                         loadSessions();
@@ -644,13 +770,6 @@
         // 创建新对话
         function createNewChat() {
             currentSessionId = null;
-            chatSessions[generateSessionId()] = {
-                id: generateSessionId(),
-                student_id: studentId,
-                title: '新对话',
-                created_at: new Date().toISOString(),
-                messages: []
-            };
             clearChat();
             deleteBtn.style.display = 'none';
             userInput.focus();
@@ -673,10 +792,22 @@
         function clearChat() {
             currentSessionId = null;
             deleteBtn.style.display = 'none';
+            
+            const descriptions = {
+                'srl': '你在SRL辅助组，AI助手会帮助你设定学习目标、监控学习进度，并引导你反思学习策略。',
+                'ai_ethics': '你在AI Ethics辅助组，AI助手会引导你思考AI技术的伦理问题，培养批判性思维。',
+                'srl_and_ethics': '你在SRL+Ethics辅助组，AI助手会同时提供自我调节学习支持和AI伦理教育引导。',
+                'original': '你在对照组，使用原始AI助手，没有特殊的辅助功能。'
+            };
+            
             chatContainer.innerHTML = `
                 <div class="welcome-message">
                     <h2>👋 欢迎使用AI学习助手</h2>
                     <p>我可以帮助你解答学习中的问题，开始新的对话吧！</p>
+                    <div class="group-info">
+                        <h3>你的实验组信息</h3>
+                        <p>${descriptions[llmType] || '加载中...'}</p>
+                    </div>
                 </div>
             `;
         }

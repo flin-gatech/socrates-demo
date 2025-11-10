@@ -1,0 +1,52 @@
+{
+  "groups": {
+    "group1": {
+      "name": "SRL辅助组",
+      "description": "Self-Regulated Learning支持",
+      "llm_type": "srl",
+      "students": [
+        "S001",
+        "S002",
+        "S003",
+        "S004",
+        "S005"
+      ]
+    },
+    "group2": {
+      "name": "AI Ethics辅助组",
+      "description": "AI伦理教育支持",
+      "llm_type": "ai_ethics",
+      "students": [
+        "S006",
+        "S007",
+        "S008",
+        "S009",
+        "S010"
+      ]
+    },
+    "group3": {
+      "name": "SRL+Ethics辅助组",
+      "description": "SRL和AI伦理双重支持",
+      "llm_type": "srl_and_ethics",
+      "students": [
+        "S011",
+        "S012",
+        "S013",
+        "S014",
+        "S015"
+      ]
+    },
+    "group4": {
+      "name": "对照组",
+      "description": "原始LLM无辅助",
+      "llm_type": "original",
+      "students": [
+        "S016",
+        "S017",
+        "S018",
+        "S019",
+        "S020"
+      ]
+    }
+  }
+}

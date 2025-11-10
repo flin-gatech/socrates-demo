@@ -1,2 +1,12 @@
 UPSTASH_REDIS_REST_URL="https://dashing-koi-12397.upstash.io"
 UPSTASH_REDIS_REST_TOKEN="ATBtAAIncDI3Y2E3Njk4Y2IyODc0NThmOGQ0NjJmNTJhOGU5MmMxOXAyMTIzOTc"
+
+
+
+在 Vercel 中设置环境变量
+
+进入你的 Vercel 项目
+点击 Settings → Environment Variables
+添加以下三个变量：
+
+NameValueQWEN_API_KEY你的通义千问 API Key (sk-9ec24e8e7f6544b19d5326518007ba9e)UPSTASH_REDIS_REST_URLhttps://dashing-koi-12397.upstash.ioUPSTASH_REDIS_REST_TOKEN从 Upstash REST 标签页复制的完整 token

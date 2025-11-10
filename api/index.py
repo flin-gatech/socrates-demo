@@ -5,6 +5,10 @@ import os
 import logging
 from datetime import datetime
 import uuid
+from redis_db import get_redis_db
+import uuid
+from datetime import datetime
+redis_db = get_redis_db()
 
 app = Flask(__name__, 
             template_folder='../templates',
@@ -77,7 +81,6 @@ def login():
                 'error': '请输入学号'
             }), 400
         
-        # 查找学生所属组
         group_info = get_student_group(student_id)
         
         if not group_info:
@@ -86,7 +89,24 @@ def login():
                 'error': '学号不存在，请检查后重试'
             }), 404
         
-        logger.info(f"Student {student_id} logged in, group: {group_info['group_id']}")
+        # 保存或更新学生信息
+        existing_student = redis_db.get_student(student_id)
+        
+        if existing_student:
+            redis_db.update_student_login(student_id)
+        else:
+            student_data = {
+                'student_id': student_id,
+                'group_id': group_info['group_id'],
+                'group_name': group_info['group_name'],
+                'llm_type': group_info['llm_type'],
+                'login_count': 1,
+                'first_login_at': datetime.utcnow().isoformat(),
+                'last_login_at': datetime.utcnow().isoformat()
+            }
+            redis_db.save_student(student_id, student_data)
+        
+        logger.info(f"Student {student_id} logged in")
         
         return jsonify({
             'success': True,
@@ -103,6 +123,7 @@ def login():
             'success': False,
             'error': '登录失败，请稍后重试'
         }), 500
+
 
 @app.route('/api/logout', methods=['POST'])
 def logout():
@@ -252,12 +273,10 @@ def route_llm_call(llm_type, messages, student_id):
     return handler(messages, student_id)
 
 # ================== 聊天接口 ==================
-
 @app.route('/chat', methods=['POST'])
 def chat():
     """处理聊天消息"""
     try:
-        # 验证请求
         if not request.is_json:
             return jsonify({
                 'error': 'Content-Type must be application/json',
@@ -265,77 +284,51 @@ def chat():
             }), 400
         
         data = request.get_json()
-        if not data:
-            return jsonify({
-                'error': 'No data provided', 
-                'success': False
-            }), 400
-        
         user_message = data.get('message', '').strip()
-        context = data.get('context', [])
         session_id = data.get('session_id')
         student_id = data.get('student_id', 'default')
-        llm_type = data.get('llm_type', 'original')  # 从前端获取LLM类型
+        llm_type = data.get('llm_type', 'original')
+        context = data.get('context', [])
         
-        # 输入验证
-        if not user_message:
+        if not user_message or len(user_message) > 2000:
             return jsonify({
-                'error': 'Please enter your message',
+                'error': 'Invalid message',
                 'success': False
             }), 400
         
-        if len(user_message) > 2000:
-            return jsonify({
-                'error': 'Message too long. Please keep it under 2000 characters.',
-                'success': False
-            }), 400
-        
-        # 检查API密钥
         if not API_KEY:
             return jsonify({
-                'error': 'API configuration error. Please set QWEN_API_KEY environment variable.',
+                'error': 'API configuration error',
                 'success': False
             }), 500
         
-        # 创建或获取会话
+        # 创建新对话
         if not session_id:
             session_id = str(uuid.uuid4())
-            chat_sessions[session_id] = {
-                'id': session_id,
-                'student_id': student_id,
-                'title': user_message[:30] + '...' if len(user_message) > 30 else user_message,
-                'created_at': datetime.now().isoformat(),
-                'messages': [],
-                'llm_type': llm_type
-            }
+            group_info = get_student_group(student_id) or {'group_id': 'unknown', 'group_name': 'unknown'}
+            
+            redis_db.create_conversation(
+                session_id, 
+                student_id, 
+                group_info, 
+                llm_type,
+                user_message[:30] + ('...' if len(user_message) > 30 else '')
+            )
+            
+            logger.info(f"Conversation {session_id} created")
         
-        session = chat_sessions.get(session_id, {
-            'id': session_id,
-            'student_id': student_id,
-            'title': user_message[:30] + '...' if len(user_message) > 30 else user_message,
-            'created_at': datetime.now().isoformat(),
-            'messages': [],
-            'llm_type': llm_type
-        })
-        chat_sessions[session_id] = session
+        # 获取当前对话
+        conversation = redis_db.get_conversation(session_id)
         
-        # 添加用户消息到会话
-        session['messages'].append({
-            'role': 'user',
-            'content': user_message,
-            'timestamp': datetime.now().isoformat()
-        })
-        
-        # 构建对话消息
+        # 构建消息列表
         messages = []
-        
-        if context:
-            recent_context = context[-20:] if len(context) > 20 else context
-            messages.extend(recent_context)
-        else:
-            api_messages = [{'role': msg['role'], 'content': msg['content']} 
-                           for msg in session['messages'] if msg['role'] in ['user', 'assistant']]
-            messages.extend(api_messages[-20:])
+        if conversation and conversation.get('messages'):
+            # 使用之前的对话历史（最多20条）
+            for msg in conversation['messages'][-20:]:
+                messages.append({
+                    'role': msg['role'],
+                    'content': msg['content']
+                })
         
         # 确保最后一条是用户消息
         if not messages or messages[-1]['role'] != 'user':
@@ -343,10 +336,9 @@ def chat():
         
         logger.info(f"Calling LLM for student {student_id}, type: {llm_type}")
         
-        # 根据学生组别调用对应的LLM
+        # 调用LLM
         result = route_llm_call(llm_type, messages, student_id)
         
-        # 解析响应
         if 'choices' not in result or not result['choices']:
             logger.error(f"Invalid API response: {result}")
             return jsonify({
@@ -358,16 +350,19 @@ def chat():
         
         if not ai_reply:
             return jsonify({
-                'error': 'Empty response from AI service', 
+                'error': 'Empty response from AI service',
                 'success': False
             }), 502
         
-        # 添加AI回复到会话
-        session['messages'].append({
-            'role': 'assistant',
-            'content': ai_reply,
-            'timestamp': datetime.now().isoformat()
-        })
+        # 保存消息到Redis
+        user_word_count = len(user_message.split())
+        ai_word_count = len(ai_reply.split())
+        
+        redis_db.add_message_to_conversation(session_id, 'user', user_message, user_word_count)
+        redis_db.add_message_to_conversation(session_id, 'assistant', ai_reply, ai_word_count)
+        
+        # 更新学生统计
+        redis_db.add_to_student_stats(student_id, 2, 0)  # 2条消息
         
         logger.info(f"Successfully generated AI response for {llm_type}")
         
@@ -376,47 +371,116 @@ def chat():
             'success': True,
             'session_id': session_id
         })
-    
-    except requests.exceptions.Timeout:
-        logger.error("API request timeout")
-        return jsonify({
-            'error': 'Request timeout. Please try again.',
-            'success': False
-        }), 504
-    
-    except requests.exceptions.ConnectionError:
-        logger.error("Connection error to API")
-        return jsonify({
-            'error': 'Unable to connect to AI service.',
-            'success': False
-        }), 503
-    
-    except requests.exceptions.HTTPError as e:
-        logger.error(f"HTTP error: {e}")
-        status_code = e.response.status_code if e.response else 500
         
-        if status_code == 401:
-            return jsonify({
-                'error': 'Authentication failed. Check API key.',
-                'success': False
-            }), 401
-        elif status_code == 429:
-            return jsonify({
-                'error': 'Too many requests. Please wait.',
-                'success': False  
-            }), 429
-        else:
-            return jsonify({
-                'error': f'AI service error: {status_code}',
-                'success': False
-            }), 502
-    
     except Exception as e:
-        logger.error(f"Unexpected error: {e}")
+        logger.error(f"Chat error: {e}")
         return jsonify({
             'error': 'An unexpected error occurred.',
             'success': False
         }), 500
+# ========== 数据导出接口 ==========
+
+@app.route('/api/export/conversations', methods=['GET'])
+def export_conversations():
+    """导出所有对话为CSV"""
+    try:
+        import pandas as pd
+        from io import BytesIO
+        from flask import send_file
+        
+        conversations = redis_db.get_all_conversations()
+        
+        data = []
+        for conv in conversations:
+            data.append({
+                'conversation_id': conv['conversation_id'],
+                'student_id': conv['student_id'],
+                'group_id': conv['group_id'],
+                'group_name': conv['group_name'],
+                'llm_type': conv['llm_type'],
+                'title': conv['title'],
+                'created_at': conv['created_at'],
+                'message_count': conv['message_count']
+            })
+        
+        if not data:
+            return jsonify({'error': 'No data to export'}), 404
+        
+        df = pd.DataFrame(data)
+        
+        output = BytesIO()
+        df.to_csv(output, index=False, encoding='utf-8-sig')
+        output.seek(0)
+        
+        return send_file(
+            output,
+            mimetype='text/csv',
+            as_attachment=True,
+            download_name=f'conversations_{datetime.utcnow().strftime("%Y%m%d_%H%M%S")}.csv'
+        )
+    except Exception as e:
+        logger.error(f"Export error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/export/messages', methods=['GET'])
+def export_messages():
+    """导出所有消息为CSV"""
+    try:
+        import pandas as pd
+        from io import BytesIO
+        from flask import send_file
+        
+        messages = redis_db.get_all_messages()
+        
+        if not messages:
+            return jsonify({'error': 'No data to export'}), 404
+        
+        df = pd.DataFrame(messages)
+        
+        output = BytesIO()
+        df.to_csv(output, index=False, encoding='utf-8-sig')
+        output.seek(0)
+        
+        return send_file(
+            output,
+            mimetype='text/csv',
+            as_attachment=True,
+            download_name=f'messages_{datetime.utcnow().strftime("%Y%m%d_%H%M%S")}.csv'
+        )
+    except Exception as e:
+        logger.error(f"Export error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/export/statistics', methods=['GET'])
+def export_statistics():
+    """导出学生统计数据为CSV"""
+    try:
+        import pandas as pd
+        from io import BytesIO
+        from flask import send_file
+        
+        stats = redis_db.export_statistics()
+        
+        if not stats:
+            return jsonify({'error': 'No data to export'}), 404
+        
+        df = pd.DataFrame(stats)
+        
+        output = BytesIO()
+        df.to_csv(output, index=False, encoding='utf-8-sig')
+        output.seek(0)
+        
+        return send_file(
+            output,
+            mimetype='text/csv',
+            as_attachment=True,
+            download_name=f'statistics_{datetime.utcnow().strftime("%Y%m%d_%H%M%S")}.csv'
+        )
+    except Exception as e:
+        logger.error(f"Export error: {e}")
+        return jsonify({'error': str(e)}), 500
 
 # ================== 会话管理 ==================
 

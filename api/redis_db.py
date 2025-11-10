@@ -1,75 +1,141 @@
 import os
-import redis
 import json
 from datetime import datetime
 import logging
+import requests
 
 logger = logging.getLogger(__name__)
 
 class RedisDB:
-    """Upstash Redis 数据管理"""
+    """Upstash Redis REST API 数据管理"""
     
     def __init__(self):
-        # 连接到Upstash Redis
-        redis_url = os.environ.get('UPSTASH_REDIS_REST_URL')
-        redis_token = os.environ.get('UPSTASH_REDIS_REST_TOKEN')
+        self.rest_url = os.environ.get('UPSTASH_REDIS_REST_URL')
+        self.rest_token = os.environ.get('UPSTASH_REDIS_REST_TOKEN')
         
         self.available = False
-        self.client = None
         
         try:
-            if not redis_url or not redis_token:
-                logger.warning("Upstash Redis credentials not found, trying local Redis")
-                try:
-                    self.client = redis.Redis(host='localhost', port=6379, decode_responses=True, socket_connect_timeout=2)
-                    self.client.ping()
-                    logger.info("✅ Connected to local Redis")
-                    self.available = True
-                except Exception as e:
-                    logger.warning(f"⚠️ Local Redis not available: {e}. Running without Redis.")
-                    self.available = False
-                    self.client = None
-                    return
-            else:
-                # 使用Upstash Redis
-                self.client = redis.Redis(
-                    url=redis_url,
-                    decode_responses=True,
-                    socket_keepalive=True,
-                    socket_keepalive_options={},
-                    connection_pool_kwargs={"socket_connect_timeout": 5, "retry_on_timeout": True}
-                )
-                self.client.ping()
-                logger.info("✅ Successfully connected to Upstash Redis")
+            if not self.rest_url or not self.rest_token:
+                logger.warning("Upstash Redis credentials not found. Running without Redis.")
+                return
+            
+            # 测试连接
+            response = self._execute_command(['PING'])
+            if response and response.get('result') == 'PONG':
+                logger.info("✅ Successfully connected to Upstash Redis (REST API)")
                 self.available = True
+            else:
+                logger.warning("⚠️ Redis connection test failed")
+                
         except Exception as e:
             logger.warning(f"⚠️ Redis connection error: {e}. Continuing without Redis.")
             self.available = False
-            self.client = None
+    
+    def _execute_command(self, command):
+        """执行 Redis REST API 命令"""
+        if not self.available and not (self.rest_url and self.rest_token):
+            return None
+        
+        try:
+            headers = {
+                'Authorization': f'Bearer {self.rest_token}',
+                'Content-Type': 'application/json'
+            }
+            
+            response = requests.post(
+                self.rest_url,
+                headers=headers,
+                json=command,
+                timeout=5
+            )
+            
+            if response.status_code == 200:
+                return response.json()
+            else:
+                logger.warning(f"Redis command failed: {response.status_code}")
+                return None
+                
+        except Exception as e:
+            logger.warning(f"Redis command error: {e}")
+            return None
+    
+    def _set(self, key, value, ex=None):
+        """设置键值"""
+        if ex:
+            command = ['SET', key, value, 'EX', str(ex)]
+        else:
+            command = ['SET', key, value]
+        
+        result = self._execute_command(command)
+        return result is not None
+    
+    def _get(self, key):
+        """获取键值"""
+        result = self._execute_command(['GET', key])
+        return result.get('result') if result else None
+    
+    def _delete(self, key):
+        """删除键"""
+        result = self._execute_command(['DEL', key])
+        return result is not None
+    
+    def _keys(self, pattern):
+        """获取匹配的键列表"""
+        result = self._execute_command(['KEYS', pattern])
+        return result.get('result', []) if result else []
+    
+    def _hset(self, key, mapping):
+        """设置哈希表"""
+        command = ['HSET', key]
+        for k, v in mapping.items():
+            command.extend([k, str(v)])
+        
+        result = self._execute_command(command)
+        return result is not None
+    
+    def _hgetall(self, key):
+        """获取哈希表所有字段"""
+        result = self._execute_command(['HGETALL', key])
+        if not result or 'result' not in result:
+            return {}
+        
+        # HGETALL 返回 [k1, v1, k2, v2, ...] 格式
+        items = result['result']
+        if not items:
+            return {}
+        
+        # 转换为字典
+        return {items[i]: items[i+1] for i in range(0, len(items), 2)}
+    
+    def _expire(self, key, seconds):
+        """设置键过期时间"""
+        result = self._execute_command(['EXPIRE', key, str(seconds)])
+        return result is not None
 
     # ============ 学生数据操作 ============
     
     def save_student(self, student_id, student_data):
         """保存学生信息"""
-        if not self.available or not self.client:
+        if not self.available:
             logger.debug("Redis unavailable, skipping save_student")
             return True
         
         try:
             key = f"student:{student_id}"
-            return self.client.set(key, json.dumps(student_data), ex=86400*365)
+            return self._set(key, json.dumps(student_data), ex=86400*365)
         except Exception as e:
             logger.warning(f"Error saving student: {e}")
             return False
     
     def get_student(self, student_id):
         """获取学生信息"""
-        if not self.available or not self.client:
+        if not self.available:
             return None
         
         try:
             key = f"student:{student_id}"
-            data = self.client.get(key)
+            data = self._get(key)
             return json.loads(data) if data else None
         except Exception as e:
             logger.warning(f"Error getting student: {e}")
@@ -77,7 +143,7 @@ class RedisDB:
     
     def update_student_login(self, student_id):
         """更新学生登录信息"""
-        if not self.available or not self.client:
+        if not self.available:
             return None
         
         try:
@@ -95,7 +161,7 @@ class RedisDB:
     
     def create_conversation(self, conv_id, student_id, group_info, llm_type, title):
         """创建新对话"""
-        if not self.available or not self.client:
+        if not self.available:
             logger.debug("Redis unavailable, skipping create_conversation")
             return True
         
@@ -112,19 +178,19 @@ class RedisDB:
                 'messages': []
             }
             key = f"conversation:{conv_id}"
-            return self.client.set(key, json.dumps(conv_data), ex=86400*30)
+            return self._set(key, json.dumps(conv_data), ex=86400*30)
         except Exception as e:
             logger.warning(f"Error creating conversation: {e}")
             return False
     
     def get_conversation(self, conv_id):
         """获取对话"""
-        if not self.available or not self.client:
+        if not self.available:
             return None
         
         try:
             key = f"conversation:{conv_id}"
-            data = self.client.get(key)
+            data = self._get(key)
             return json.loads(data) if data else None
         except Exception as e:
             logger.warning(f"Error getting conversation: {e}")
@@ -132,7 +198,7 @@ class RedisDB:
     
     def add_message_to_conversation(self, conv_id, role, content, word_count):
         """添加消息到对话"""
-        if not self.available or not self.client:
+        if not self.available:
             logger.debug("Redis unavailable, skipping add_message_to_conversation")
             return True
         
@@ -152,7 +218,7 @@ class RedisDB:
             conv['message_count'] = len(conv['messages'])
             
             key = f"conversation:{conv_id}"
-            return self.client.set(key, json.dumps(conv), ex=86400*30)
+            return self._set(key, json.dumps(conv), ex=86400*30)
         except Exception as e:
             logger.warning(f"Error adding message to conversation: {e}")
             return False
@@ -161,27 +227,27 @@ class RedisDB:
     
     def add_to_student_stats(self, student_id, messages_count, duration_seconds):
         """更新学生统计"""
-        if not self.available or not self.client:
+        if not self.available:
             logger.debug("Redis unavailable, skipping add_to_student_stats")
             return True
         
         try:
             key = f"stats:{student_id}"
             
-            stats = self.client.hgetall(key)
+            stats = self._hgetall(key)
             if not stats:
                 stats = {
-                    'total_messages': 0,
-                    'total_duration': 0.0,
-                    'total_conversations': 0
+                    'total_messages': '0',
+                    'total_duration': '0.0',
+                    'total_conversations': '0'
                 }
             
-            stats['total_messages'] = int(stats.get('total_messages', 0)) + messages_count
-            stats['total_duration'] = float(stats.get('total_duration', 0)) + duration_seconds
-            stats['total_conversations'] = int(stats.get('total_conversations', 0)) + 1
+            stats['total_messages'] = str(int(stats.get('total_messages', 0)) + messages_count)
+            stats['total_duration'] = str(float(stats.get('total_duration', 0)) + duration_seconds)
+            stats['total_conversations'] = str(int(stats.get('total_conversations', 0)) + 1)
             
-            self.client.hset(key, mapping=stats)
-            self.client.expire(key, 86400*365)
+            self._hset(key, stats)
+            self._expire(key, 86400*365)
             return True
         except Exception as e:
             logger.warning(f"Error updating student stats: {e}")
@@ -191,14 +257,14 @@ class RedisDB:
     
     def get_all_conversations(self):
         """获取所有对话"""
-        if not self.available or not self.client:
+        if not self.available:
             return []
         
         try:
-            keys = self.client.keys("conversation:*")
+            keys = self._keys("conversation:*")
             conversations = []
             for key in keys:
-                data = self.client.get(key)
+                data = self._get(key)
                 if data:
                     conversations.append(json.loads(data))
             return conversations
@@ -208,14 +274,14 @@ class RedisDB:
     
     def get_all_students(self):
         """获取所有学生"""
-        if not self.available or not self.client:
+        if not self.available:
             return []
         
         try:
-            keys = self.client.keys("student:*")
+            keys = self._keys("student:*")
             students = []
             for key in keys:
-                data = self.client.get(key)
+                data = self._get(key)
                 if data:
                     students.append(json.loads(data))
             return students
@@ -224,8 +290,8 @@ class RedisDB:
             return []
     
     def get_all_messages(self):
-        """获取所有消息（展平）"""
-        if not self.available or not self.client:
+        """获取所有消息(展平)"""
+        if not self.available:
             return []
         
         try:
@@ -252,18 +318,18 @@ class RedisDB:
     
     def export_statistics(self):
         """导出统计数据"""
-        if not self.available or not self.client:
+        if not self.available:
             return []
         
         try:
-            stats_keys = self.client.keys("stats:*")
+            stats_keys = self._keys("stats:*")
             statistics = []
             
             for key in stats_keys:
                 try:
                     student_id = key.split(':')[1]
                     student_data = self.get_student(student_id)
-                    stats_data = self.client.hgetall(key)
+                    stats_data = self._hgetall(key)
                     
                     record = {
                         'student_id': student_id,

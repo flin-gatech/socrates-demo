@@ -177,60 +177,209 @@ def call_srl_llm(messages, student_id):
 
 def call_ai_ethics_llm(messages, student_id):
     """
-    Group 2: AI Ethics辅助的LLM
-    AI伦理教育支持
+    Group 2: AI Ethics辅助的LLM - 两步工作流
     
-    TODO: 添加AI伦理相关的引导
-    - 讨论AI的偏见和公平性
-    - 强调数据隐私和安全
-    - 培养批判性思维
-    - 讨论AI的社会影响
+    工作流程:
+    1. 先将学生问题发送给 AI Ethics Instruction Agent,获取基于AI伦理的指导
+    2. 将 AI Ethics 指导 + 学生原始问题一起发送给最终 LLM 生成回答
     """
-    system_prompt = {
+    
+    # 提取学生的最新问题
+    user_message = messages[-1]['content'] if messages and messages[-1]['role'] == 'user' else ''
+    
+    if not user_message:
+        return call_qwen_api(messages)
+    
+    # ========== 步骤1: 调用 AI Ethics Instruction Agent ==========
+    ethics_agent_prompt = {
         'role': 'system',
-        'content': '''你是一个注重AI伦理教育的AI助手。在回答中：
-1. 适时讨论AI技术的伦理问题（偏见、公平性、隐私等）
-2. 鼓励学生批判性地思考AI的使用
-3. 强调负责任地使用AI工具的重要性
-4. 帮助学生理解AI的局限性和潜在风险
+        'content': '''你是一个AI伦理教育专家。
 
-在相关话题中引导思考：
-- AI在这个领域可能存在什么偏见？
-- 使用AI时需要注意哪些伦理问题？
-- 如何负责任地使用AI技术？'''
+请分析学生的问题,并提供简短的AI伦理指导建议(2-3句话),帮助学生:
+- 识别AI技术中的潜在偏见和公平性问题
+- 理解数据隐私和安全的重要性
+- 培养对AI使用的批判性思维
+- 认识AI的社会影响和责任
+
+只需要返回AI伦理指导建议,不要直接回答学生的问题。'''
     }
     
-    messages_with_prompt = [system_prompt] + messages
+    ethics_agent_messages = [
+        ethics_agent_prompt,
+        {'role': 'user', 'content': f'学生问题: {user_message}\n\n请给出AI伦理指导建议:'}
+    ]
     
-    return call_qwen_api(messages_with_prompt)
+    logger.info(f"Step 1: Calling AI Ethics Instruction Agent for student {student_id}")
+    
+    try:
+        ethics_response = call_qwen_api(ethics_agent_messages)
+        ethics_instruction = ethics_response['choices'][0]['message']['content'].strip()
+        logger.info(f"AI Ethics Instruction generated: {ethics_instruction[:100]}...")
+    except Exception as e:
+        logger.error(f"Error calling AI Ethics agent: {e}")
+        # 如果 AI Ethics agent 失败,使用默认指导
+        ethics_instruction = "在使用AI技术时,请思考可能存在的偏见和伦理问题,并负责任地使用。"
+    
+    # ========== 步骤2: 调用最终 LLM 回答学生问题 ==========
+    final_system_prompt = {
+        'role': 'system',
+        'content': f'''你是一个注重AI伦理教育的AI助手。
+
+**AI伦理指导建议:**
+{ethics_instruction}
+
+请在回答学生问题时:
+1. 自然地融入上述AI伦理指导建议
+2. 提供准确、有帮助的答案
+3. 适时讨论AI技术的伦理问题(偏见、公平性、隐私等)
+4. 鼓励学生批判性地思考AI的使用
+5. 强调负责任地使用AI工具的重要性
+6. 帮助学生理解AI的局限性和潜在风险
+
+记住:你的回答应该既解决学生的具体问题,又培养他们对AI伦理的意识和批判性思维。'''
+    }
+    
+    # 构建最终的消息列表
+    # 包含对话历史(不含最后一条用户消息) + 新的系统提示 + 最后一条用户消息
+    final_messages = [final_system_prompt]
+    
+    # 添加历史对话(排除最后一条,因为我们要重新添加)
+    if len(messages) > 1:
+        for msg in messages[:-1]:
+            final_messages.append({
+                'role': msg['role'],
+                'content': msg['content']
+            })
+    
+    # 添加当前用户问题
+    final_messages.append({
+        'role': 'user',
+        'content': user_message
+    })
+    
+    logger.info(f"Step 2: Calling final LLM with AI Ethics guidance for student {student_id}")
+    
+    return call_qwen_api(final_messages)
 
 def call_srl_and_ethics_llm(messages, student_id):
     """
-    Group 3: SRL + AI Ethics 双重辅助的LLM
-    结合自我调节学习和AI伦理教育
+    Group 3: SRL + AI Ethics 双重辅助的LLM - 三步级联工作流
     
-    TODO: 整合SRL和AI伦理的引导
+    工作流程:
+    1. 先将学生问题发送给 AI Ethics Instruction Agent,获取AI伦理指导
+    2. 将 AI Ethics 指导发送给 SRL Instruction Agent,进行SRL调整
+    3. 将最终整合的指导 + 学生原始问题一起发送给最终 LLM
     """
-    system_prompt = {
+    
+    # 提取学生的最新问题
+    user_message = messages[-1]['content'] if messages and messages[-1]['role'] == 'user' else ''
+    
+    if not user_message:
+        return call_qwen_api(messages)
+    
+    # ========== 步骤1: 调用 AI Ethics Instruction Agent ==========
+    ethics_agent_prompt = {
         'role': 'system',
-        'content': '''你是一个同时支持自我调节学习(SRL)和AI伦理教育的AI助手。
+        'content': '''你是一个AI伦理教育专家。
 
-SRL方面：
-- 鼓励设定学习目标并监控进度
-- 引导反思学习策略
-- 提供元认知支持
+请分析学生的问题,并提供简短的AI伦理指导建议(2-3句话),帮助学生:
+- 识别AI技术中的潜在偏见和公平性问题
+- 理解数据隐私和安全的重要性
+- 培养对AI使用的批判性思维
+- 认识AI的社会影响和责任
 
-AI伦理方面：
-- 讨论AI的伦理问题（偏见、公平性、隐私）
-- 培养批判性思维
-- 强调负责任使用AI
-
-在回答时平衡这两个方面，帮助学生成为负责任的、自主的学习者。'''
+只需要返回AI伦理指导建议,不要直接回答学生的问题。'''
     }
     
-    messages_with_prompt = [system_prompt] + messages
+    ethics_agent_messages = [
+        ethics_agent_prompt,
+        {'role': 'user', 'content': f'学生问题: {user_message}\n\n请给出AI伦理指导建议:'}
+    ]
     
-    return call_qwen_api(messages_with_prompt)
+    logger.info(f"Step 1: Calling AI Ethics Instruction Agent for student {student_id}")
+    
+    try:
+        ethics_response = call_qwen_api(ethics_agent_messages)
+        ethics_instruction = ethics_response['choices'][0]['message']['content'].strip()
+        logger.info(f"AI Ethics Instruction generated: {ethics_instruction[:100]}...")
+    except Exception as e:
+        logger.error(f"Error calling AI Ethics agent: {e}")
+        # 如果失败,使用默认指导
+        ethics_instruction = "在使用AI技术时,请思考可能存在的偏见和伦理问题,并负责任地使用。"
+    
+    # ========== 步骤2: 调用 SRL Instruction Agent 对伦理指导进行调整 ==========
+    srl_agent_prompt = {
+        'role': 'system',
+        'content': '''你是一个自我调节学习(SRL)指导专家。
+
+你将收到一个AI伦理方面的指导建议。请基于SRL原则对这个指导进行调整和扩展,使其:
+- 鼓励学生设定学习目标
+- 引导学生监控和评估自己的理解
+- 促进学生的元认知思考
+- 帮助学生反思学习策略
+
+请保留原有的AI伦理内容,但用SRL的视角进行重新表述和扩展(3-4句话)。'''
+    }
+    
+    srl_agent_messages = [
+        srl_agent_prompt,
+        {'role': 'user', 'content': f'''学生的原始问题: {user_message}
+
+AI伦理指导建议:
+{ethics_instruction}
+
+请基于SRL原则调整和扩展这个指导:'''}
+    ]
+    
+    logger.info(f"Step 2: Calling SRL Instruction Agent to adjust ethics guidance for student {student_id}")
+    
+    try:
+        srl_response = call_qwen_api(srl_agent_messages)
+        final_instruction = srl_response['choices'][0]['message']['content'].strip()
+        logger.info(f"Final SRL-adjusted instruction generated: {final_instruction[:100]}...")
+    except Exception as e:
+        logger.error(f"Error calling SRL agent: {e}")
+        # 如果SRL调整失败,使用原始的伦理指导
+        final_instruction = ethics_instruction + " 请在学习过程中监控自己的理解,并反思你的学习策略。"
+    
+    # ========== 步骤3: 调用最终 LLM 回答学生问题 ==========
+    final_system_prompt = {
+        'role': 'system',
+        'content': f'''你是一个同时支持自我调节学习(SRL)和AI伦理教育的AI助手。
+
+**整合指导建议(SRL + AI Ethics):**
+{final_instruction}
+
+请在回答学生问题时:
+1. 自然地融入上述整合指导建议
+2. 提供准确、有帮助的答案
+3. **SRL方面**: 鼓励学生设定学习目标、监控进度、反思策略、提供元认知支持
+4. **AI伦理方面**: 讨论AI的伦理问题(偏见、公平性、隐私)、培养批判性思维、强调负责任使用
+5. 平衡这两个方面,帮助学生成为负责任的、自主的学习者
+
+记住:你的回答应该既解决学生的具体问题,又同时促进他们的自我调节学习能力和AI伦理意识。'''
+    }
+    
+    # 构建最终的消息列表
+    final_messages = [final_system_prompt]
+    
+    # 添加历史对话(排除最后一条,因为我们要重新添加)
+    if len(messages) > 1:
+        for msg in messages[:-1]:
+            final_messages.append({
+                'role': msg['role'],
+                'content': msg['content']
+            })
+    
+    # 添加当前用户问题
+    final_messages.append({
+        'role': 'user',
+        'content': user_message
+    })
+    
+    logger.info(f"Step 3: Calling final LLM with integrated SRL+Ethics guidance for student {student_id}")
+    
+    return call_qwen_api(final_messages)
 
 def call_original_llm(messages, student_id):
     """

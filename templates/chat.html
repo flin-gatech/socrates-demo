@@ -498,9 +498,8 @@
     </div>
 
     <script>
-        // 全局变量
+            // 全局变量
         let currentSessionId = null;
-        let chatSessions = {};
         let studentId = '';
         let studentGroup = '';
         let groupName = '';
@@ -564,7 +563,7 @@
             if (!checkLogin()) return;
             
             userInput.focus();
-            loadSessions();
+            loadHistorySessions(); // 从后端加载历史会话
         };
 
         // 自动调整输入框高度
@@ -605,9 +604,6 @@
                     },
                     body: JSON.stringify({
                         message: message,
-                        context: currentSessionId && chatSessions[currentSessionId] 
-                            ? chatSessions[currentSessionId].messages.slice(-20) 
-                            : [],
                         session_id: currentSessionId,
                         student_id: studentId,
                         llm_type: llmType
@@ -619,27 +615,12 @@
                 removeTypingIndicator();
 
                 if (data.success) {
-                    // 更新会话ID
+                    // 如果是新对话,更新会话ID并刷新列表
                     if (!currentSessionId) {
-                        currentSessionId = generateSessionId();
-                        chatSessions[currentSessionId] = {
-                            id: currentSessionId,
-                            title: message.substring(0, 30) + (message.length > 30 ? '...' : ''),
-                            created_at: new Date().toISOString(),
-                            messages: [],
-                            student_id: studentId,
-                            llm_type: llmType
-                        };
+                        currentSessionId = data.session_id;
                         deleteBtn.style.display = 'block';
-                        loadSessions();
-                    }
-
-                    // 保存消息
-                    if (chatSessions[currentSessionId]) {
-                        chatSessions[currentSessionId].messages.push(
-                            { role: 'user', content: message },
-                            { role: 'assistant', content: data.reply }
-                        );
+                        // 刷新历史会话列表
+                        await loadHistorySessions();
                     }
 
                     // 显示AI回复
@@ -704,20 +685,37 @@
             if (indicator) indicator.remove();
         }
 
-        // 加载会话列表
-        function loadSessions() {
-            const sessions = Object.values(chatSessions).filter(s => s.student_id === studentId);
-            sessions.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+        // 从后端加载历史会话列表
+        async function loadHistorySessions() {
+            try {
+                const response = await fetch(`/api/sessions?student_id=${studentId}`);
+                const data = await response.json();
+                
+                if (data.success && data.sessions) {
+                    displayHistorySessions(data.sessions);
+                } else {
+                    sessionList.innerHTML = '<div style="padding: 16px; text-align: center; color: #8e8ea0; font-size: 14px;">暂无对话历史</div>';
+                }
+            } catch (error) {
+                console.error('加载历史会话失败:', error);
+                sessionList.innerHTML = '<div style="padding: 16px; text-align: center; color: #8e8ea0; font-size: 14px;">加载失败</div>';
+            }
+        }
 
+        // 显示历史会话列表
+        function displayHistorySessions(sessions) {
             if (sessions.length === 0) {
                 sessionList.innerHTML = '<div style="padding: 16px; text-align: center; color: #8e8ea0; font-size: 14px;">暂无对话历史</div>';
                 return;
             }
 
             sessionList.innerHTML = '';
+            
             sessions.forEach(session => {
                 const sessionItem = document.createElement('div');
                 sessionItem.className = 'session-item';
+                sessionItem.dataset.sessionId = session.id;
+                
                 if (session.id === currentSessionId) {
                     sessionItem.classList.add('active');
                 }
@@ -730,50 +728,17 @@
                     minute: '2-digit'
                 });
 
-                const messageCount = session.messages.filter(m => m.role === 'user').length;
-
                 sessionItem.innerHTML = `
                     <div class="session-title">${escapeHtml(session.title)}</div>
-                    <div class="session-info">${dateString} · ${messageCount}条消息</div>
+                    <div class="session-info">${dateString} · ${session.message_count}条消息</div>
                 `;
 
                 sessionItem.addEventListener('click', () => loadSession(session.id));
                 sessionList.appendChild(sessionItem);
             });
         }
-        // 登录成功后加载历史会话
-        async function loadHistorySessions() {
-            try {
-                const response = await fetch(`/api/sessions?student_id=${currentStudentId}`);
-                const data = await response.json();
-                
-                if (data.success && data.sessions) {
-                    displayHistorySessions(data.sessions);
-                }
-            } catch (error) {
-                console.error('加载历史会话失败:', error);
-            }
-        }
 
-        // 显示历史会话列表
-        function displayHistorySessions(sessions) {
-            const historyContainer = document.getElementById('history-sessions');
-            historyContainer.innerHTML = '';
-            
-            sessions.forEach(session => {
-                const sessionItem = document.createElement('div');
-                sessionItem.className = 'session-item';
-                sessionItem.innerHTML = `
-                    <h4>${session.title}</h4>
-                    <p>${session.last_message}</p>
-                    <span>${new Date(session.created_at).toLocaleString()}</span>
-                `;
-                sessionItem.onclick = () => loadSession(session.id);
-                historyContainer.appendChild(sessionItem);
-            });
-        }
-
-        // 加载特定会话
+        // 从后端加载特定会话
         async function loadSession(sessionId) {
             try {
                 const response = await fetch(`/api/sessions/${sessionId}`);
@@ -781,35 +746,34 @@
                 
                 if (data.success && data.session) {
                     currentSessionId = sessionId;
-                    displayMessages(data.session.messages);
+                    deleteBtn.style.display = 'block';
+                    
+                    // 清空聊天区域
+                    chatContainer.innerHTML = '';
+                    
+                    // 显示所有历史消息
+                    if (data.session.messages && data.session.messages.length > 0) {
+                        data.session.messages.forEach(msg => {
+                            displayMessage(msg.content, msg.role === 'user');
+                        });
+                    }
+                    
+                    // 更新会话列表选中状态
+                    document.querySelectorAll('.session-item').forEach(item => {
+                        item.classList.remove('active');
+                    });
+                    
+                    const activeItem = document.querySelector(`[data-session-id="${sessionId}"]`);
+                    if (activeItem) {
+                        activeItem.classList.add('active');
+                    }
+                } else {
+                    alert('加载会话失败: ' + (data.error || '未知错误'));
                 }
             } catch (error) {
                 console.error('加载会话失败:', error);
+                alert('加载会话失败，请重试');
             }
-        }
-        // 加载特定会话
-        function loadSession(sessionId) {
-            const session = chatSessions[sessionId];
-            if (!session) return;
-
-            currentSessionId = sessionId;
-            deleteBtn.style.display = 'block';
-
-            // 清空聊天区域
-            chatContainer.innerHTML = '';
-
-            // 显示所有消息
-            session.messages.forEach(msg => {
-                if (msg.role === 'user' || msg.role === 'assistant') {
-                    displayMessage(msg.content, msg.role === 'user');
-                }
-            });
-
-            // 更新会话列表选中状态
-            document.querySelectorAll('.session-item').forEach(item => {
-                item.classList.remove('active');
-            });
-            event.currentTarget.classList.add('active');
         }
 
         // 创建新对话
@@ -817,27 +781,45 @@
             currentSessionId = null;
             clearChat();
             deleteBtn.style.display = 'none';
+            
+            // 移除所有会话的选中状态
+            document.querySelectorAll('.session-item').forEach(item => {
+                item.classList.remove('active');
+            });
+            
             userInput.focus();
         }
 
         // 删除当前对话
-        function deleteCurrentChat() {
+        async function deleteCurrentChat() {
             if (!currentSessionId) return;
 
             if (!confirm('确定要删除这个对话吗？')) return;
 
-            delete chatSessions[currentSessionId];
-            currentSessionId = null;
-            deleteBtn.style.display = 'none';
-            clearChat();
-            loadSessions();
+            try {
+                const response = await fetch(`/api/sessions/${currentSessionId}`, {
+                    method: 'DELETE'
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    // 删除成功,清空当前对话并刷新列表
+                    currentSessionId = null;
+                    deleteBtn.style.display = 'none';
+                    clearChat();
+                    await loadHistorySessions();
+                } else {
+                    alert('删除失败: ' + (data.error || '未知错误'));
+                }
+            } catch (error) {
+                console.error('删除会话失败:', error);
+                alert('删除失败，请重试');
+            }
         }
 
         // 清空聊天区域
         function clearChat() {
-            currentSessionId = null;
-            deleteBtn.style.display = 'none';
-            
             const descriptions = {
                 'srl': '你在SRL辅助组，AI助手会帮助你设定学习目标、监控学习进度，并引导你反思学习策略。',
                 'ai_ethics': '你在AI Ethics辅助组，AI助手会引导你思考AI技术的伦理问题，培养批判性思维。',
@@ -855,11 +837,6 @@
                     </div>
                 </div>
             `;
-        }
-
-        // 生成会话ID
-        function generateSessionId() {
-            return 'session_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
         }
 
         // HTML转义

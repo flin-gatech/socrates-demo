@@ -741,7 +741,52 @@
                 sessionList.appendChild(sessionItem);
             });
         }
+        // 登录成功后加载历史会话
+        async function loadHistorySessions() {
+            try {
+                const response = await fetch(`/api/sessions?student_id=${currentStudentId}`);
+                const data = await response.json();
+                
+                if (data.success && data.sessions) {
+                    displayHistorySessions(data.sessions);
+                }
+            } catch (error) {
+                console.error('加载历史会话失败:', error);
+            }
+        }
 
+        // 显示历史会话列表
+        function displayHistorySessions(sessions) {
+            const historyContainer = document.getElementById('history-sessions');
+            historyContainer.innerHTML = '';
+            
+            sessions.forEach(session => {
+                const sessionItem = document.createElement('div');
+                sessionItem.className = 'session-item';
+                sessionItem.innerHTML = `
+                    <h4>${session.title}</h4>
+                    <p>${session.last_message}</p>
+                    <span>${new Date(session.created_at).toLocaleString()}</span>
+                `;
+                sessionItem.onclick = () => loadSession(session.id);
+                historyContainer.appendChild(sessionItem);
+            });
+        }
+
+        // 加载特定会话
+        async function loadSession(sessionId) {
+            try {
+                const response = await fetch(`/api/sessions/${sessionId}`);
+                const data = await response.json();
+                
+                if (data.success && data.session) {
+                    currentSessionId = sessionId;
+                    displayMessages(data.session.messages);
+                }
+            } catch (error) {
+                console.error('加载会话失败:', error);
+            }
+        }
         // 加载特定会话
         function loadSession(sessionId) {
             const session = chatSessions[sessionId];

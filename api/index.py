@@ -488,30 +488,21 @@ def export_statistics():
 
 # ================== 会话管理 ==================
 
-@app.route('/api/sessions', methods=['GET'])
-def get_sessions():
-    """获取会话列表"""
+@app.route('/api/sessions/<session_id>', methods=['GET'])
+def get_session(session_id):
+    """获取特定会话的详细信息"""
     try:
-        student_id = request.args.get('student_id', 'default')
+        # 从 Redis 获取
+        session = redis_db.get_conversation(session_id)
         
-        student_sessions = [
-            {
-                'id': session['id'],
-                'title': session['title'],
-                'created_at': session['created_at'],
-                'message_count': len([m for m in session['messages'] if m['role'] == 'user'])
-            }
-            for session in chat_sessions.values()
-            if session.get('student_id') == student_id
-        ]
+        if not session:
+            return jsonify({'error': '会话不存在', 'success': False}), 404
         
-        student_sessions.sort(key=lambda x: x['created_at'], reverse=True)
-        
-        return jsonify({'sessions': student_sessions})
+        return jsonify({'session': session, 'success': True})
         
     except Exception as e:
-        logger.error(f"Error getting sessions: {e}")
-        return jsonify({'error': str(e)}), 500
+        logger.error(f"Error getting session: {e}")
+        return jsonify({'error': str(e), 'success': False}), 500
 
 @app.route('/api/sessions/<session_id>', methods=['GET'])
 def get_session(session_id):
@@ -532,15 +523,18 @@ def get_session(session_id):
 def delete_session(session_id):
     """删除会话"""
     try:
-        if session_id in chat_sessions:
-            del chat_sessions[session_id]
-            return jsonify({'message': '会话已删除'})
+        # 从 Redis 删除
+        key = f"conversation:{session_id}"
+        success = redis_db._delete(key)
+        
+        if success:
+            return jsonify({'message': '会话已删除', 'success': True})
         else:
-            return jsonify({'error': '会话不存在'}), 404
+            return jsonify({'error': '会话不存在', 'success': False}), 404
             
     except Exception as e:
         logger.error(f"Error deleting session: {e}")
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': str(e), 'success': False}), 500
 
 @app.route('/api/sessions', methods=['POST'])
 def create_session():

@@ -25,7 +25,7 @@ chat_sessions = {}
 def load_students_config():
     """加载学生分组配置"""
     try:
-        config_path = os.path.join(os.path.dirname(__file__), 'students_config.json')
+        config_path = os.path.join(os.path.dirname(__file__), '..', 'students_config.json')
         with open(config_path, 'r', encoding='utf-8') as f:
             return json.load(f)
     except Exception as e:

@@ -4,7 +4,246 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AI 学习助手</title>
+     <!-- 添加 marked.js -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    
+    <!-- 添加代码高亮 (可选) -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js@11/styles/github.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/highlight.js@11/lib/core.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/highlight.js@11/lib/languages/python.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/highlight.js@11/lib/languages/javascript.min.js"></script>
     <style>
+         .message-content {
+            padding: 12px 16px;
+            background-color: #f7f7f8;
+            border-radius: 8px;
+            line-height: 1.8;  /* 增加行高 */
+            font-size: 15px;
+            color: #202123;
+            word-wrap: break-word;
+        }
+        
+        .message.user .message-content {
+            background-color: #667eea;
+            color: white;
+        }
+        
+        .message.assistant .message-content {
+            background-color: #f0f0f0;
+        }
+        
+        /* Markdown 元素样式 */
+        .message-content h1,
+        .message-content h2,
+        .message-content h3 {
+            margin: 16px 0 8px 0;
+            font-weight: 600;
+            color: #202123;
+        }
+        
+        .message-content h1 {
+            font-size: 1.5em;
+            border-bottom: 2px solid #667eea;
+            padding-bottom: 8px;
+        }
+        
+        .message-content h2 {
+            font-size: 1.3em;
+            color: #764ba2;
+        }
+        
+        .message-content h3 {
+            font-size: 1.15em;
+            color: #667eea;
+        }
+        
+        .message-content h4 {
+            font-size: 1.05em;
+            font-weight: 600;
+            margin: 12px 0 6px 0;
+        }
+        
+        /* 段落 */
+        .message-content p {
+            margin: 8px 0;
+            line-height: 1.8;
+        }
+        
+        /* 列表 */
+        .message-content ul,
+        .message-content ol {
+            margin: 8px 0;
+            padding-left: 24px;
+        }
+        
+        .message-content li {
+            margin: 6px 0;
+            line-height: 1.6;
+        }
+        
+        .message-content ul li {
+            list-style-type: disc;
+        }
+        
+        .message-content ol li {
+            list-style-type: decimal;
+        }
+        
+        /* 引用块 */
+        .message-content blockquote {
+            margin: 12px 0;
+            padding: 12px 16px;
+            border-left: 4px solid #667eea;
+            background-color: #f8f9fa;
+            color: #495057;
+            font-style: italic;
+        }
+        
+        /* 代码块 */
+        .message-content pre {
+            background-color: #2d2d2d;
+            color: #f8f8f2;
+            padding: 16px;
+            border-radius: 6px;
+            overflow-x: auto;
+            margin: 12px 0;
+            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+            font-size: 14px;
+            line-height: 1.5;
+        }
+        
+        .message-content code {
+            background-color: #f4f4f4;
+            color: #e83e8c;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+            font-size: 0.9em;
+        }
+        
+        .message-content pre code {
+            background-color: transparent;
+            color: inherit;
+            padding: 0;
+        }
+        
+        /* 表格 */
+        .message-content table {
+            border-collapse: collapse;
+            width: 100%;
+            margin: 12px 0;
+            font-size: 14px;
+        }
+        
+        .message-content table th,
+        .message-content table td {
+            border: 1px solid #ddd;
+            padding: 10px 12px;
+            text-align: left;
+        }
+        
+        .message-content table th {
+            background-color: #667eea;
+            color: white;
+            font-weight: 600;
+        }
+        
+        .message-content table tr:nth-child(even) {
+            background-color: #f8f9fa;
+        }
+        
+        .message-content table tr:hover {
+            background-color: #e9ecef;
+        }
+        
+        /* 水平线 */
+        .message-content hr {
+            border: none;
+            border-top: 2px solid #e5e5e5;
+            margin: 20px 0;
+        }
+        
+        /* 强调 */
+        .message-content strong {
+            font-weight: 700;
+            color: #202123;
+        }
+        
+        .message-content em {
+            font-style: italic;
+            color: #495057;
+        }
+        
+        /* 链接 */
+        .message-content a {
+            color: #667eea;
+            text-decoration: none;
+            border-bottom: 1px solid #667eea;
+            transition: all 0.2s;
+        }
+        
+        .message-content a:hover {
+            color: #764ba2;
+            border-bottom-color: #764ba2;
+        }
+        
+        /* Emoji 和特殊符号优化 */
+        .message-content .emoji {
+            font-size: 1.2em;
+            vertical-align: middle;
+        }
+        
+        /* 复选框列表 */
+        .message-content input[type="checkbox"] {
+            margin-right: 8px;
+        }
+        
+        /* 用户消息中的样式覆盖 (保持白色) */
+        .message.user .message-content h1,
+        .message.user .message-content h2,
+        .message.user .message-content h3,
+        .message.user .message-content strong {
+            color: white;
+        }
+        
+        .message.user .message-content code {
+            background-color: rgba(255, 255, 255, 0.2);
+            color: white;
+        }
+        
+        .message.user .message-content a {
+            color: white;
+            border-bottom-color: white;
+        }
+        
+        /* 继续按钮样式 */
+        .continue-hint {
+            text-align: center;
+            padding: 12px;
+            margin: 16px 0;
+        }
+        
+        .continue-btn {
+            padding: 10px 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 20px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
+        }
+        
+        .continue-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.5);
+        }
+        
+        .continue-btn:active {
+            transform: translateY(0);
+        }
         * {
             margin: 0;
             padding: 0;
@@ -512,7 +751,108 @@
         const sendBtn = document.getElementById('sendBtn');
         const sessionList = document.getElementById('sessionList');
         const deleteBtn = document.getElementById('deleteBtn');
+        // 配置 marked.js
+        if (typeof marked !== 'undefined') {
+            marked.setOptions({
+                breaks: true,        // 支持 GitHub 风格的换行
+                gfm: true,          // 启用 GitHub Flavored Markdown
+                headerIds: false,   // 禁用标题 ID
+                mangle: false       // 禁用邮箱混淆
+            });
+            
+            // 如果有 highlight.js,配置代码高亮
+            if (typeof hljs !== 'undefined') {
+                marked.setOptions({
+                    highlight: function(code, lang) {
+                        if (lang && hljs.getLanguage(lang)) {
+                            try {
+                                return hljs.highlight(code, { language: lang }).value;
+                            } catch (err) {}
+                        }
+                        return code;
+                    }
+                });
+            }
+        }
 
+        // 显示消息 (修改后的版本)
+        function displayMessage(content, isUser = false) {
+            const welcome = document.querySelector('.welcome-message');
+            if (welcome) welcome.remove();
+
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${isUser ? 'user' : 'assistant'}`;
+
+            const now = new Date();
+            const timeString = now.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+
+            // 处理内容: 用户消息直接显示,AI 消息解析 Markdown
+            let processedContent;
+            if (isUser) {
+                processedContent = escapeHtml(content);
+            } else {
+                // AI 消息使用 Markdown 渲染
+                if (typeof marked !== 'undefined') {
+                    processedContent = marked.parse(content);
+                } else {
+                    // Fallback: 如果 marked 未加载,保持原样
+                    processedContent = escapeHtml(content).replace(/\n/g, '<br>');
+                }
+            }
+
+            messageDiv.innerHTML = `
+                <div class="message-header">
+                    <span class="message-role">${isUser ? '我' : 'AI助手'}</span>
+                    <span class="message-time">${timeString}</span>
+                </div>
+                <div class="message-content">${processedContent}</div>
+            `;
+
+            chatContainer.appendChild(messageDiv);
+            
+            // 如果有代码高亮,应用高亮
+            if (!isUser && typeof hljs !== 'undefined') {
+                messageDiv.querySelectorAll('pre code').forEach((block) => {
+                    hljs.highlightElement(block);
+                });
+            }
+            
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+        }
+
+        // 更新最后一条消息 (用于继续生成) - 也要支持 Markdown
+        function updateLastMessage(newContent) {
+            const messages = chatContainer.querySelectorAll('.message.assistant');
+            if (messages.length > 0) {
+                const lastMessage = messages[messages.length - 1];
+                const contentDiv = lastMessage.querySelector('.message-content');
+                
+                // 获取旧内容的纯文本
+                let oldContent = contentDiv.textContent || contentDiv.innerText;
+                if (oldContent.includes('💬 *[回答内容较长')) {
+                    oldContent = oldContent.split('💬 *[回答内容较长')[0];
+                }
+                
+                // 合并内容
+                const combinedContent = oldContent + '\n\n' + newContent;
+                
+                // 重新渲染 Markdown
+                if (typeof marked !== 'undefined') {
+                    contentDiv.innerHTML = marked.parse(combinedContent);
+                    
+                    // 应用代码高亮
+                    if (typeof hljs !== 'undefined') {
+                        contentDiv.querySelectorAll('pre code').forEach((block) => {
+                            hljs.highlightElement(block);
+                        });
+                    }
+                } else {
+                    contentDiv.textContent = combinedContent;
+                }
+            }
+            
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+        }
         // 检查登录状态
         function checkLogin() {
             const loggedIn = sessionStorage.getItem('student_logged_in');
@@ -635,29 +975,6 @@
             } finally {
                 sendBtn.disabled = false;
             }
-        }
-
-        // 显示消息
-        function displayMessage(content, isUser = false) {
-            const welcome = document.querySelector('.welcome-message');
-            if (welcome) welcome.remove();
-
-            const messageDiv = document.createElement('div');
-            messageDiv.className = `message ${isUser ? 'user' : 'assistant'}`;
-
-            const now = new Date();
-            const timeString = now.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
-
-            messageDiv.innerHTML = `
-                <div class="message-header">
-                    <span class="message-role">${isUser ? '我' : 'AI助手'}</span>
-                    <span class="message-time">${timeString}</span>
-                </div>
-                <div class="message-content">${escapeHtml(content)}</div>
-            `;
-
-            chatContainer.appendChild(messageDiv);
-            chatContainer.scrollTop = chatContainer.scrollHeight;
         }
 
         // 显示输入指示器

@@ -4,6 +4,14 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AI 学习助手</title>
+    
+    <!-- 登录检查前隐藏页面 -->
+    <style>
+        body.checking-auth {
+            visibility: hidden;
+        }
+    </style>
+    
      <!-- 添加 marked.js -->
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     
@@ -519,26 +527,6 @@
             color: #764ba2;
         }
 
-        .message-content {
-            padding: 12px 16px;
-            background-color: #f7f7f8;
-            border-radius: 8px;
-            line-height: 1.6;
-            font-size: 15px;
-            color: #202123;
-            white-space: pre-wrap;
-            word-wrap: break-word;
-        }
-
-        .message.user .message-content {
-            background-color: #667eea;
-            color: white;
-        }
-
-        .message.assistant .message-content {
-            background-color: #f0f0f0;
-        }
-
         .message-time {
             font-size: 11px;
             color: #8e8ea0;
@@ -669,9 +657,20 @@
             background-color: #4b5563;
             border-radius: 4px;
         }
+        /* 打字机光标效果 */
+        .message.assistant .message-content.streaming::after {
+            content: '▋';
+            animation: blink 1s infinite;
+            margin-left: 2px;
+        }
+
+        @keyframes blink {
+            0%, 50% { opacity: 1; }
+            51%, 100% { opacity: 0; }
+        }
     </style>
 </head>
-<body>
+<body class="checking-auth">
     <div class="app-container">
         <!-- 左侧边栏 -->
         <div class="sidebar">
@@ -736,432 +735,484 @@
         </div>
     </div>
 
-    <script>
-            // 全局变量
-        let currentSessionId = null;
-        let studentId = '';
-        let studentGroup = '';
-        let groupName = '';
-        let llmType = 'original';
-        let groupDescription = '';
+   <script>
+    // ========== 立即执行登录检查 ==========
+    (function() {
+        const loggedIn = sessionStorage.getItem('student_logged_in');
+        
+        if (!loggedIn) {
+            window.location.href = '/login';
+            return;
+        }
+        
+        // 已登录，显示页面
+        document.body.classList.remove('checking-auth');
+    })();
 
-        // DOM元素
-        const chatContainer = document.getElementById('chatContainer');
-        const userInput = document.getElementById('userInput');
-        const sendBtn = document.getElementById('sendBtn');
-        const sessionList = document.getElementById('sessionList');
-        const deleteBtn = document.getElementById('deleteBtn');
-        // 配置 marked.js
-        if (typeof marked !== 'undefined') {
+    // 全局变量
+    let currentSessionId = null;
+    let studentId = '';
+    let studentGroup = '';
+    let groupName = '';
+    let llmType = 'original';
+    let groupDescription = '';
+
+    // DOM元素
+    const chatContainer = document.getElementById('chatContainer');
+    const userInput = document.getElementById('userInput');
+    const sendBtn = document.getElementById('sendBtn');
+    const sessionList = document.getElementById('sessionList');
+    const deleteBtn = document.getElementById('deleteBtn');
+    
+    // 配置 marked.js
+    if (typeof marked !== 'undefined') {
+        marked.setOptions({
+            breaks: true,
+            gfm: true,
+            headerIds: false,
+            mangle: false
+        });
+        
+        if (typeof hljs !== 'undefined') {
             marked.setOptions({
-                breaks: true,        // 支持 GitHub 风格的换行
-                gfm: true,          // 启用 GitHub Flavored Markdown
-                headerIds: false,   // 禁用标题 ID
-                mangle: false       // 禁用邮箱混淆
+                highlight: function(code, lang) {
+                    if (lang && hljs.getLanguage(lang)) {
+                        try {
+                            return hljs.highlight(code, { language: lang }).value;
+                        } catch (err) {}
+                    }
+                    return code;
+                }
             });
-            
-            // 如果有 highlight.js,配置代码高亮
-            if (typeof hljs !== 'undefined') {
-                marked.setOptions({
-                    highlight: function(code, lang) {
-                        if (lang && hljs.getLanguage(lang)) {
-                            try {
-                                return hljs.highlight(code, { language: lang }).value;
-                            } catch (err) {}
-                        }
-                        return code;
-                    }
-                });
-            }
         }
+    }
 
-        // 显示消息 (修改后的版本)
-        function displayMessage(content, isUser = false) {
-            const welcome = document.querySelector('.welcome-message');
-            if (welcome) welcome.remove();
+    // 显示消息
+    function displayMessage(content, isUser = false) {
+        const welcome = document.querySelector('.welcome-message');
+        if (welcome) welcome.remove();
 
-            const messageDiv = document.createElement('div');
-            messageDiv.className = `message ${isUser ? 'user' : 'assistant'}`;
+        const messageDiv = document.createElement('div');
+        messageDiv.className = `message ${isUser ? 'user' : 'assistant'}`;
 
-            const now = new Date();
-            const timeString = now.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+        const now = new Date();
+        const timeString = now.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
 
-            // 处理内容: 用户消息直接显示,AI 消息解析 Markdown
-            let processedContent;
-            if (isUser) {
-                processedContent = escapeHtml(content);
+        let processedContent;
+        if (isUser) {
+            processedContent = escapeHtml(content);
+        } else {
+            if (typeof marked !== 'undefined') {
+                processedContent = marked.parse(content);
             } else {
-                // AI 消息使用 Markdown 渲染
-                if (typeof marked !== 'undefined') {
-                    processedContent = marked.parse(content);
-                } else {
-                    // Fallback: 如果 marked 未加载,保持原样
-                    processedContent = escapeHtml(content).replace(/\n/g, '<br>');
-                }
-            }
-
-            messageDiv.innerHTML = `
-                <div class="message-header">
-                    <span class="message-role">${isUser ? '我' : 'AI助手'}</span>
-                    <span class="message-time">${timeString}</span>
-                </div>
-                <div class="message-content">${processedContent}</div>
-            `;
-
-            chatContainer.appendChild(messageDiv);
-            
-            // 如果有代码高亮,应用高亮
-            if (!isUser && typeof hljs !== 'undefined') {
-                messageDiv.querySelectorAll('pre code').forEach((block) => {
-                    hljs.highlightElement(block);
-                });
-            }
-            
-            chatContainer.scrollTop = chatContainer.scrollHeight;
-        }
-
-        // 更新最后一条消息 (用于继续生成) - 也要支持 Markdown
-        function updateLastMessage(newContent) {
-            const messages = chatContainer.querySelectorAll('.message.assistant');
-            if (messages.length > 0) {
-                const lastMessage = messages[messages.length - 1];
-                const contentDiv = lastMessage.querySelector('.message-content');
-                
-                // 获取旧内容的纯文本
-                let oldContent = contentDiv.textContent || contentDiv.innerText;
-                if (oldContent.includes('💬 *[回答内容较长')) {
-                    oldContent = oldContent.split('💬 *[回答内容较长')[0];
-                }
-                
-                // 合并内容
-                const combinedContent = oldContent + '\n\n' + newContent;
-                
-                // 重新渲染 Markdown
-                if (typeof marked !== 'undefined') {
-                    contentDiv.innerHTML = marked.parse(combinedContent);
-                    
-                    // 应用代码高亮
-                    if (typeof hljs !== 'undefined') {
-                        contentDiv.querySelectorAll('pre code').forEach((block) => {
-                            hljs.highlightElement(block);
-                        });
-                    }
-                } else {
-                    contentDiv.textContent = combinedContent;
-                }
-            }
-            
-            chatContainer.scrollTop = chatContainer.scrollHeight;
-        }
-        // 检查登录状态
-        function checkLogin() {
-            const loggedIn = sessionStorage.getItem('student_logged_in');
-            
-            if (!loggedIn) {
-                window.location.href = '/login';
-                return false;
-            }
-            
-            // 加载学生信息
-            studentId = sessionStorage.getItem('student_id') || '';
-            studentGroup = sessionStorage.getItem('student_group') || '';
-            groupName = sessionStorage.getItem('group_name') || '';
-            llmType = sessionStorage.getItem('llm_type') || 'original';
-            groupDescription = sessionStorage.getItem('group_description') || '';
-            
-            // 显示学生信息
-            document.getElementById('displayStudentId').textContent = studentId;
-            document.getElementById('displayGroupName').textContent = groupName;
-            
-            const groupBadge = document.getElementById('groupBadge');
-            groupBadge.textContent = studentGroup.toUpperCase();
-            groupBadge.className = 'group-badge ' + studentGroup;
-            
-            // 更新欢迎信息中的组描述
-            const descriptions = {
-                'srl': '你在SRL辅助组，AI助手会帮助你设定学习目标、监控学习进度，并引导你反思学习策略。',
-                'ai_ethics': '你在AI Ethics辅助组，AI助手会引导你思考AI技术的伦理问题，培养批判性思维。',
-                'srl_and_ethics': '你在SRL+Ethics辅助组，AI助手会同时提供自我调节学习支持和AI伦理教育引导。',
-                'original': '你在对照组，使用原始AI助手，没有特殊的辅助功能。'
-            };
-            
-            document.getElementById('groupDescription').textContent = descriptions[llmType] || '加载中...';
-            
-            return true;
-        }
-
-        // 登出
-        function logout() {
-            if (confirm('确定要退出登录吗？')) {
-                sessionStorage.clear();
-                window.location.href = '/login';
+                processedContent = escapeHtml(content).replace(/\n/g, '<br>');
             }
         }
 
-        // 初始化
-        window.onload = function() {
-            if (!checkLogin()) return;
-            
-            userInput.focus();
-            loadHistorySessions(); // 从后端加载历史会话
+        messageDiv.innerHTML = `
+            <div class="message-header">
+                <span class="message-role">${isUser ? '我' : 'AI助手'}</span>
+                <span class="message-time">${timeString}</span>
+            </div>
+            <div class="message-content">${processedContent}</div>
+        `;
+
+        chatContainer.appendChild(messageDiv);
+        
+        if (!isUser && typeof hljs !== 'undefined') {
+            messageDiv.querySelectorAll('pre code').forEach((block) => {
+                hljs.highlightElement(block);
+            });
+        }
+        
+        chatContainer.scrollTop = chatContainer.scrollHeight;
+    }
+
+    // 创建 AI 消息容器（用于流式输出）
+    function createAIMessageContainer() {
+        const welcome = document.querySelector('.welcome-message');
+        if (welcome) welcome.remove();
+
+        const messageDiv = document.createElement('div');
+        messageDiv.className = 'message assistant';
+
+        const now = new Date();
+        const timeString = now.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+
+        messageDiv.innerHTML = `
+            <div class="message-header">
+                <span class="message-role">AI助手</span>
+                <span class="message-time">${timeString}</span>
+            </div>
+            <div class="message-content streaming"></div>
+        `;
+
+        chatContainer.appendChild(messageDiv);
+        return messageDiv;
+    }
+
+    // 检查登录状态
+    function checkLogin() {
+        const loggedIn = sessionStorage.getItem('student_logged_in');
+        
+        if (!loggedIn) {
+            window.location.href = '/login';
+            return false;
+        }
+        
+        studentId = sessionStorage.getItem('student_id') || '';
+        studentGroup = sessionStorage.getItem('student_group') || '';
+        groupName = sessionStorage.getItem('group_name') || '';
+        llmType = sessionStorage.getItem('llm_type') || 'original';
+        groupDescription = sessionStorage.getItem('group_description') || '';
+        
+        document.getElementById('displayStudentId').textContent = studentId;
+        document.getElementById('displayGroupName').textContent = groupName;
+        
+        const groupBadge = document.getElementById('groupBadge');
+        groupBadge.textContent = studentGroup.toUpperCase();
+        groupBadge.className = 'group-badge ' + studentGroup;
+        
+        const descriptions = {
+            'srl': '你在SRL辅助组，AI助手会帮助你设定学习目标、监控学习进度，并引导你反思学习策略。',
+            'ai_ethics': '你在AI Ethics辅助组，AI助手会引导你思考AI技术的伦理问题，培养批判性思维。',
+            'srl_and_ethics': '你在SRL+Ethics辅助组，AI助手会同时提供自我调节学习支持和AI伦理教育引导。',
+            'original': '你在对照组，使用原始AI助手，没有特殊的辅助功能。'
         };
+        
+        document.getElementById('groupDescription').textContent = descriptions[llmType] || '加载中...';
+        
+        return true;
+    }
 
-        // 自动调整输入框高度
-        userInput.addEventListener('input', () => {
-            userInput.style.height = 'auto';
-            userInput.style.height = userInput.scrollHeight + 'px';
-        });
-
-        // Enter发送消息
-        userInput.addEventListener('keypress', function(e) {
-            if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                sendMessage();
-            }
-        });
-
-        // 发送消息
-        async function sendMessage() {
-            const message = userInput.value.trim();
-            if (!message) return;
-
-            // 显示用户消息
-            displayMessage(message, true);
-            userInput.value = '';
-            userInput.style.height = 'auto';
-
-            // 显示输入指示器
-            showTypingIndicator();
-
-            // 禁用发送按钮
-            sendBtn.disabled = true;
-
-            try {
-                const response = await fetch('/chat', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({
-                        message: message,
-                        session_id: currentSessionId,
-                        student_id: studentId,
-                        llm_type: llmType
-                    })
-                });
-
-                const data = await response.json();
-
-                removeTypingIndicator();
-
-                if (data.success) {
-                    // 如果是新对话,更新会话ID并刷新列表
-                    if (!currentSessionId) {
-                        currentSessionId = data.session_id;
-                        deleteBtn.style.display = 'block';
-                        // 刷新历史会话列表
-                        await loadHistorySessions();
-                    }
-
-                    // 显示AI回复
-                    displayMessage(data.reply, false);
-                } else {
-                    displayMessage('抱歉，发生了错误：' + (data.error || '未知错误'), false);
-                }
-            } catch (error) {
-                console.error('Error:', error);
-                removeTypingIndicator();
-                displayMessage('连接错误，请检查网络后重试。', false);
-            } finally {
-                sendBtn.disabled = false;
-            }
+    // 登出
+    function logout() {
+        if (confirm('确定要退出登录吗？')) {
+            sessionStorage.clear();
+            window.location.href = '/login';
         }
+    }
+
+    // 初始化
+    window.onload = function() {
+        if (!checkLogin()) return;
+        
+        userInput.focus();
+        loadHistorySessions();
+    };
+
+    // 自动调整输入框高度
+    userInput.addEventListener('input', () => {
+        userInput.style.height = 'auto';
+        userInput.style.height = userInput.scrollHeight + 'px';
+    });
+
+    // Enter发送消息
+    userInput.addEventListener('keypress', function(e) {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            sendMessage();
+        }
+    });
+
+    // 发送消息 - 流式版本
+    async function sendMessage() {
+        const message = userInput.value.trim();
+        if (!message) return;
+
+        // 显示用户消息
+        displayMessage(message, true);
+        userInput.value = '';
+        userInput.style.height = 'auto';
 
         // 显示输入指示器
-        function showTypingIndicator() {
-            const indicator = document.createElement('div');
-            indicator.className = 'message assistant typing';
-            indicator.id = 'typingIndicator';
-            indicator.innerHTML = `
-                <div class="message-header">
-                    <span class="message-role">AI助手</span>
-                </div>
-                <div class="typing-indicator">
-                    <span></span>
-                    <span></span>
-                    <span></span>
-                </div>
-            `;
-            chatContainer.appendChild(indicator);
-            chatContainer.scrollTop = chatContainer.scrollHeight;
-        }
+        showTypingIndicator();
 
-        // 移除输入指示器
-        function removeTypingIndicator() {
-            const indicator = document.getElementById('typingIndicator');
-            if (indicator) indicator.remove();
-        }
+        // 禁用发送按钮
+        sendBtn.disabled = true;
 
-        // 从后端加载历史会话列表
-        async function loadHistorySessions() {
-            try {
-                const response = await fetch(`/api/sessions?student_id=${studentId}`);
-                const data = await response.json();
-                
-                if (data.success && data.sessions) {
-                    displayHistorySessions(data.sessions);
-                } else {
-                    sessionList.innerHTML = '<div style="padding: 16px; text-align: center; color: #8e8ea0; font-size: 14px;">暂无对话历史</div>';
-                }
-            } catch (error) {
-                console.error('加载历史会话失败:', error);
-                sessionList.innerHTML = '<div style="padding: 16px; text-align: center; color: #8e8ea0; font-size: 14px;">加载失败</div>';
+        try {
+            const response = await fetch('/chat/stream', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    message: message,
+                    session_id: currentSessionId,
+                    student_id: studentId,
+                    llm_type: llmType
+                })
+            });
+
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
             }
-        }
 
-        // 显示历史会话列表
-        function displayHistorySessions(sessions) {
-            if (sessions.length === 0) {
+            // 移除输入指示器
+            removeTypingIndicator();
+
+            // 创建 AI 消息容器
+            const aiMessageDiv = createAIMessageContainer();
+            const contentDiv = aiMessageDiv.querySelector('.message-content');
+
+            // 读取流式数据
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            let buffer = '';
+            let fullContent = '';
+
+            while (true) {
+                const { done, value } = await reader.read();
+                
+                if (done) break;
+
+                buffer += decoder.decode(value, { stream: true });
+                
+                // 处理可能的多行数据
+                const lines = buffer.split('\n');
+                buffer = lines.pop(); // 保留最后一个不完整的行
+
+                for (const line of lines) {
+                    if (line.startsWith('data: ')) {
+                        const jsonStr = line.slice(6);
+                        
+                        try {
+                            const data = JSON.parse(jsonStr);
+                            
+                            if (data.type === 'session_id') {
+                                // 更新 session_id
+                                currentSessionId = data.session_id;
+                                deleteBtn.style.display = 'block';
+                                
+                            } else if (data.type === 'content') {
+                                // 追加内容
+                                fullContent += data.content;
+                                
+                                // 实时渲染 Markdown
+                                if (typeof marked !== 'undefined') {
+                                    contentDiv.innerHTML = marked.parse(fullContent);
+                                    
+                                    // 应用代码高亮
+                                    if (typeof hljs !== 'undefined') {
+                                        contentDiv.querySelectorAll('pre code').forEach((block) => {
+                                            hljs.highlightElement(block);
+                                        });
+                                    }
+                                } else {
+                                    contentDiv.textContent = fullContent;
+                                }
+                                
+                                // 自动滚动
+                                chatContainer.scrollTop = chatContainer.scrollHeight;
+                                
+                            } else if (data.type === 'done') {
+                                // 流式传输完成，移除光标
+                                contentDiv.classList.remove('streaming');
+                                
+                                // 刷新历史会话列表
+                                await loadHistorySessions();
+                                
+                            } else if (data.type === 'error') {
+                                displayMessage('抱歉，发生了错误：' + (data.error || '未知错误'), false);
+                            }
+                            
+                        } catch (e) {
+                            console.error('JSON parse error:', e);
+                        }
+                    }
+                }
+            }
+
+        } catch (error) {
+            console.error('Error:', error);
+            removeTypingIndicator();
+            displayMessage('连接错误，请检查网络后重试。', false);
+        } finally {
+            sendBtn.disabled = false;
+        }
+    }
+
+    // 显示输入指示器
+    function showTypingIndicator() {
+        const indicator = document.createElement('div');
+        indicator.className = 'message assistant typing';
+        indicator.id = 'typingIndicator';
+        indicator.innerHTML = `
+            <div class="message-header">
+                <span class="message-role">AI助手</span>
+            </div>
+            <div class="typing-indicator">
+                <span></span>
+                <span></span>
+                <span></span>
+            </div>
+        `;
+        chatContainer.appendChild(indicator);
+        chatContainer.scrollTop = chatContainer.scrollHeight;
+    }
+
+    // 移除输入指示器
+    function removeTypingIndicator() {
+        const indicator = document.getElementById('typingIndicator');
+        if (indicator) indicator.remove();
+    }
+
+    // 从后端加载历史会话列表
+    async function loadHistorySessions() {
+        try {
+            const response = await fetch(`/api/sessions?student_id=${studentId}`);
+            const data = await response.json();
+            
+            if (data.success && data.sessions) {
+                displayHistorySessions(data.sessions);
+            } else {
                 sessionList.innerHTML = '<div style="padding: 16px; text-align: center; color: #8e8ea0; font-size: 14px;">暂无对话历史</div>';
-                return;
+            }
+        } catch (error) {
+            console.error('加载历史会话失败:', error);
+            sessionList.innerHTML = '<div style="padding: 16px; text-align: center; color: #8e8ea0; font-size: 14px;">加载失败</div>';
+        }
+    }
+
+    // 显示历史会话列表
+    function displayHistorySessions(sessions) {
+        if (sessions.length === 0) {
+            sessionList.innerHTML = '<div style="padding: 16px; text-align: center; color: #8e8ea0; font-size: 14px;">暂无对话历史</div>';
+            return;
+        }
+
+        sessionList.innerHTML = '';
+        
+        sessions.forEach(session => {
+            const sessionItem = document.createElement('div');
+            sessionItem.className = 'session-item';
+            sessionItem.dataset.sessionId = session.id;
+            
+            if (session.id === currentSessionId) {
+                sessionItem.classList.add('active');
             }
 
-            sessionList.innerHTML = '';
-            
-            sessions.forEach(session => {
-                const sessionItem = document.createElement('div');
-                sessionItem.className = 'session-item';
-                sessionItem.dataset.sessionId = session.id;
-                
-                if (session.id === currentSessionId) {
-                    sessionItem.classList.add('active');
-                }
-
-                const createdDate = new Date(session.created_at);
-                const dateString = createdDate.toLocaleDateString('zh-CN', {
-                    month: '2-digit',
-                    day: '2-digit',
-                    hour: '2-digit',
-                    minute: '2-digit'
-                });
-
-                sessionItem.innerHTML = `
-                    <div class="session-title">${escapeHtml(session.title)}</div>
-                    <div class="session-info">${dateString} · ${session.message_count}条消息</div>
-                `;
-
-                sessionItem.addEventListener('click', () => loadSession(session.id));
-                sessionList.appendChild(sessionItem);
+            const createdDate = new Date(session.created_at);
+            const dateString = createdDate.toLocaleDateString('zh-CN', {
+                month: '2-digit',
+                day: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit'
             });
-        }
 
-        // 从后端加载特定会话
-        async function loadSession(sessionId) {
-            try {
-                const response = await fetch(`/api/sessions/${sessionId}`);
-                const data = await response.json();
-                
-                if (data.success && data.session) {
-                    currentSessionId = sessionId;
-                    deleteBtn.style.display = 'block';
-                    
-                    // 清空聊天区域
-                    chatContainer.innerHTML = '';
-                    
-                    // 显示所有历史消息
-                    if (data.session.messages && data.session.messages.length > 0) {
-                        data.session.messages.forEach(msg => {
-                            displayMessage(msg.content, msg.role === 'user');
-                        });
-                    }
-                    
-                    // 更新会话列表选中状态
-                    document.querySelectorAll('.session-item').forEach(item => {
-                        item.classList.remove('active');
-                    });
-                    
-                    const activeItem = document.querySelector(`[data-session-id="${sessionId}"]`);
-                    if (activeItem) {
-                        activeItem.classList.add('active');
-                    }
-                } else {
-                    alert('加载会话失败: ' + (data.error || '未知错误'));
-                }
-            } catch (error) {
-                console.error('加载会话失败:', error);
-                alert('加载会话失败，请重试');
-            }
-        }
-
-        // 创建新对话
-        function createNewChat() {
-            currentSessionId = null;
-            clearChat();
-            deleteBtn.style.display = 'none';
-            
-            // 移除所有会话的选中状态
-            document.querySelectorAll('.session-item').forEach(item => {
-                item.classList.remove('active');
-            });
-            
-            userInput.focus();
-        }
-
-        // 删除当前对话
-        async function deleteCurrentChat() {
-            if (!currentSessionId) return;
-
-            if (!confirm('确定要删除这个对话吗？')) return;
-
-            try {
-                const response = await fetch(`/api/sessions/${currentSessionId}`, {
-                    method: 'DELETE'
-                });
-                
-                const data = await response.json();
-                
-                if (data.success) {
-                    // 删除成功,清空当前对话并刷新列表
-                    currentSessionId = null;
-                    deleteBtn.style.display = 'none';
-                    clearChat();
-                    await loadHistorySessions();
-                } else {
-                    alert('删除失败: ' + (data.error || '未知错误'));
-                }
-            } catch (error) {
-                console.error('删除会话失败:', error);
-                alert('删除失败，请重试');
-            }
-        }
-
-        // 清空聊天区域
-        function clearChat() {
-            const descriptions = {
-                'srl': '你在SRL辅助组，AI助手会帮助你设定学习目标、监控学习进度，并引导你反思学习策略。',
-                'ai_ethics': '你在AI Ethics辅助组，AI助手会引导你思考AI技术的伦理问题，培养批判性思维。',
-                'srl_and_ethics': '你在SRL+Ethics辅助组，AI助手会同时提供自我调节学习支持和AI伦理教育引导。',
-                'original': '你在对照组，使用原始AI助手，没有特殊的辅助功能。'
-            };
-            
-            chatContainer.innerHTML = `
-                <div class="welcome-message">
-                    <h2>👋 欢迎使用AI学习助手</h2>
-                    <p>我可以帮助你解答学习中的问题，开始新的对话吧！</p>
-                    <div class="group-info">
-                        <h3>你的实验组信息</h3>
-                        <p>${descriptions[llmType] || '加载中...'}</p>
-                    </div>
-                </div>
+            sessionItem.innerHTML = `
+                <div class="session-title">${escapeHtml(session.title)}</div>
+                <div class="session-info">${dateString} · ${session.message_count}条消息</div>
             `;
-        }
 
-        // HTML转义
-        function escapeHtml(text) {
-            const div = document.createElement('div');
-            div.textContent = text;
-            return div.innerHTML;
+            sessionItem.addEventListener('click', () => loadSession(session.id));
+            sessionList.appendChild(sessionItem);
+        });
+    }
+
+    // 从后端加载特定会话
+    async function loadSession(sessionId) {
+        try {
+            const response = await fetch(`/api/sessions/${sessionId}`);
+            const data = await response.json();
+            
+            if (data.success && data.session) {
+                currentSessionId = sessionId;
+                deleteBtn.style.display = 'block';
+                
+                chatContainer.innerHTML = '';
+                
+                if (data.session.messages && data.session.messages.length > 0) {
+                    data.session.messages.forEach(msg => {
+                        displayMessage(msg.content, msg.role === 'user');
+                    });
+                }
+                
+                document.querySelectorAll('.session-item').forEach(item => {
+                    item.classList.remove('active');
+                });
+                
+                const activeItem = document.querySelector(`[data-session-id="${sessionId}"]`);
+                if (activeItem) {
+                    activeItem.classList.add('active');
+                }
+            } else {
+                alert('加载会话失败: ' + (data.error || '未知错误'));
+            }
+        } catch (error) {
+            console.error('加载会话失败:', error);
+            alert('加载会话失败，请重试');
         }
-    </script>
+    }
+
+    // 创建新对话
+    function createNewChat() {
+        currentSessionId = null;
+        clearChat();
+        deleteBtn.style.display = 'none';
+        
+        document.querySelectorAll('.session-item').forEach(item => {
+            item.classList.remove('active');
+        });
+        
+        userInput.focus();
+    }
+
+    // 删除当前对话
+    async function deleteCurrentChat() {
+        if (!currentSessionId) return;
+
+        if (!confirm('确定要删除这个对话吗？')) return;
+
+        try {
+            const response = await fetch(`/api/sessions/${currentSessionId}`, {
+                method: 'DELETE'
+            });
+            
+            const data = await response.json();
+            
+            if (data.success) {
+                currentSessionId = null;
+                deleteBtn.style.display = 'none';
+                clearChat();
+                await loadHistorySessions();
+            } else {
+                alert('删除失败: ' + (data.error || '未知错误'));
+            }
+        } catch (error) {
+            console.error('删除会话失败:', error);
+            alert('删除失败，请重试');
+        }
+    }
+
+    // 清空聊天区域
+    function clearChat() {
+        const descriptions = {
+            'srl': '你在SRL辅助组，AI助手会帮助你设定学习目标、监控学习进度，并引导你反思学习策略。',
+            'ai_ethics': '你在AI Ethics辅助组，AI助手会引导你思考AI技术的伦理问题，培养批判性思维。',
+            'srl_and_ethics': '你在SRL+Ethics辅助组，AI助手会同时提供自我调节学习支持和AI伦理教育引导。',
+            'original': '你在对照组，使用原始AI助手，没有特殊的辅助功能。'
+        };
+        
+        chatContainer.innerHTML = `
+            <div class="welcome-message">
+                <h2>👋 欢迎使用AI学习助手</h2>
+                <p>我可以帮助你解答学习中的问题，开始新的对话吧！</p>
+                <div class="group-info">
+                    <h3>你的实验组信息</h3>
+                    <p>${descriptions[llmType] || '加载中...'}</p>
+                </div>
+            </div>
+        `;
+    }
+
+    // HTML转义
+    function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+</script>
 </body>
 </html>

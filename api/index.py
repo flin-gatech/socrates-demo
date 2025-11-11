@@ -5,6 +5,7 @@ import os
 import logging
 from datetime import datetime, timezone
 import uuid
+from flask import Response, stream_with_context
 
 # 处理导入问题
 try:
@@ -143,8 +144,133 @@ def health_check():
         'students_loaded': len(STUDENTS_CONFIG.get('groups', {}))
     })
 
-# ================== LLM调用接口 ==================
-
+# 新增流式聊天路由
+@app.route('/chat/stream', methods=['POST'])
+def chat_stream():
+    """处理聊天消息 - 流式输出版本"""
+    
+    def generate():
+        try:
+            data = request.get_json()
+            user_message = data.get('message', '').strip()
+            session_id = data.get('session_id')
+            student_id = data.get('student_id', 'default')
+            llm_type = data.get('llm_type', 'original')
+            
+            if not user_message or len(user_message) > 2000:
+                yield f"data: {json.dumps({'type': 'error', 'error': 'Invalid message', 'success': False})}\n\n"
+                return
+            
+            if not API_KEY:
+                yield f"data: {json.dumps({'type': 'error', 'error': 'API configuration error', 'success': False})}\n\n"
+                return
+            
+            # 创建新对话（如果需要）
+            if not session_id:
+                session_id = str(uuid.uuid4())
+                group_info = get_student_group(student_id) or {'group_id': 'unknown', 'group_name': 'unknown'}
+                
+                redis_db.create_conversation(
+                    session_id, 
+                    student_id, 
+                    group_info, 
+                    llm_type,
+                    user_message[:30] + ('...' if len(user_message) > 30 else '')
+                )
+                
+                # 发送 session_id
+                yield f"data: {json.dumps({'type': 'session_id', 'session_id': session_id})}\n\n"
+            
+            # 获取对话历史
+            conversation = redis_db.get_conversation(session_id)
+            messages = []
+            
+            if conversation and conversation.get('messages'):
+                for msg in conversation['messages'][-20:]:
+                    messages.append({
+                        'role': msg['role'],
+                        'content': msg['content']
+                    })
+            
+            # 添加当前用户消息
+            if not messages or messages[-1]['role'] != 'user':
+                messages.append({'role': 'user', 'content': user_message})
+            
+            logger.info(f"Streaming response for student {student_id}, type: {llm_type}")
+            
+            # ========== 根据 llm_type 路由到不同的处理逻辑 ==========
+            full_response = ""
+            
+            if llm_type == 'original':
+                # 对照组：直接流式输出
+                response = call_qwen_api_stream(messages, max_tokens=2000, timeout=60)
+                
+                for line in response.iter_lines():
+                    if line:
+                        line_str = line.decode('utf-8')
+                        
+                        if line_str.startswith('data: '):
+                            json_str = line_str[6:]
+                            
+                            if json_str.strip() == '[DONE]':
+                                break
+                            
+                            try:
+                                chunk_data = json.loads(json_str)
+                                
+                                if 'choices' in chunk_data and len(chunk_data['choices']) > 0:
+                                    delta = chunk_data['choices'][0].get('delta', {})
+                                    content = delta.get('content', '')
+                                    
+                                    if content:
+                                        full_response += content
+                                        yield f"data: {json.dumps({'type': 'content', 'content': content})}\n\n"
+                            
+                            except json.JSONDecodeError as e:
+                                logger.warning(f"JSON decode error: {e}")
+                                continue
+            
+            else:
+                # SRL / AI Ethics / SRL+Ethics 组：先获取完整响应，再模拟流式输出
+                result = route_llm_call(llm_type, messages, student_id)
+                
+                if 'choices' in result and result['choices']:
+                    full_response = result['choices'][0]['message']['content'].strip()
+                    
+                    # 模拟流式输出（每次发送 5-10 个字符）
+                    import time
+                    chunk_size = 8
+                    for i in range(0, len(full_response), chunk_size):
+                        chunk = full_response[i:i+chunk_size]
+                        yield f"data: {json.dumps({'type': 'content', 'content': chunk})}\n\n"
+                        time.sleep(0.05)  # 50ms 延迟，模拟打字效果
+                else:
+                    yield f"data: {json.dumps({'type': 'error', 'error': 'Invalid API response', 'success': False})}\n\n"
+                    return
+            
+            # 发送完成信号
+            yield f"data: {json.dumps({'type': 'done', 'success': True})}\n\n"
+            
+            # 保存到数据库
+            user_word_count = len(user_message.split())
+            ai_word_count = len(full_response.split())
+            
+            redis_db.add_message_to_conversation(session_id, 'user', user_message, user_word_count)
+            redis_db.add_message_to_conversation(session_id, 'assistant', full_response, ai_word_count)
+            redis_db.add_to_student_stats(student_id, 2, 0)
+            
+        except Exception as e:
+            logger.error(f"Stream error: {e}")
+            yield f"data: {json.dumps({'type': 'error', 'error': str(e), 'success': False})}\n\n"
+    
+    return Response(
+        stream_with_context(generate()),
+        mimetype='text/event-stream',
+        headers={
+            'Cache-Control': 'no-cache',
+            'X-Accel-Buffering': 'no'
+        }
+    )
 # ================== LLM调用接口 ==================
 
 import time
@@ -165,7 +291,38 @@ AGENT_CONFIG = {
         'timeout': 60
     }
 }
-
+# 修改通义千问 API 调用，支持流式输出
+def call_qwen_api_stream(messages, max_tokens=800, timeout=60):
+    """
+    调用通义千问API - 流式版本
+    """
+    headers = {
+        'Authorization': f'Bearer {API_KEY}',
+        'Content-Type': 'application/json'
+    }
+    
+    api_data = {
+        'model': 'qwen-plus',
+        'messages': messages,
+        'temperature': 0.7,
+        'max_tokens': max_tokens,
+        'top_p': 0.9,
+        'stream': True  # 👈 开启流式输出
+    }
+    
+    try:
+        response = requests.post(
+            API_BASE_URL, 
+            headers=headers, 
+            json=api_data, 
+            stream=True,  # 👈 流式接收
+            timeout=timeout
+        )
+        response.raise_for_status()
+        return response
+    except Exception as e:
+        logger.error(f"API stream error: {e}")
+        raise
 def call_qwen_api(messages, max_tokens=800, timeout=60, max_retries=2):
     """
     调用通义千问API (优化版)

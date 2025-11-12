@@ -668,6 +668,190 @@
             0%, 50% { opacity: 1; }
             51%, 100% { opacity: 0; }
         }
+        /* 思考步骤容器 */
+        .thinking-steps {
+            margin-bottom: 16px;
+            padding: 16px;
+            background: linear-gradient(135deg, #f0f4ff 0%, #fef3f2 100%);
+            border-radius: 12px;
+            border-left: 4px solid #667eea;
+            box-shadow: 0 2px 8px rgba(102, 126, 234, 0.1);
+        }
+
+        /* 单个思考步骤 */
+        .thinking-step {
+            display: flex;
+            align-items: flex-start;
+            padding: 10px 0;
+            color: #4b5563;
+            font-size: 14px;
+            animation: fadeInStep 0.3s ease-in;
+            position: relative;
+        }
+
+        @keyframes fadeInStep {
+            from {
+                opacity: 0;
+                transform: translateX(-10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+
+        /* 步骤状态 */
+        .thinking-step.completed {
+            color: #9ca3af;
+        }
+
+        .thinking-step.active {
+            color: #667eea;
+            font-weight: 600;
+        }
+
+        /* 步骤图标 */
+        .thinking-step .step-icon {
+            margin-right: 10px;
+            font-size: 18px;
+            min-width: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        /* 步骤内容区 */
+        .thinking-step .step-content {
+            flex: 1;
+        }
+
+        /* 加载动画 */
+        .thinking-step .step-spinner {
+            margin-left: 8px;
+            display: inline-block;
+            width: 14px;
+            height: 14px;
+            border: 2px solid #667eea;
+            border-top-color: transparent;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        /* 完成图标 */
+        .thinking-step .step-check {
+            margin-left: 8px;
+            color: #10b981;
+            font-size: 16px;
+        }
+        
+        /* 中间输出折叠框样式 */
+        .intermediate-output {
+            margin: 8px 0 8px 34px;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            background: white;
+            overflow: hidden;
+            transition: all 0.3s ease;
+        }
+
+        .intermediate-output-header {
+            padding: 10px 14px;
+            background: #f9fafb;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: background 0.2s;
+        }
+
+        .intermediate-output-header:hover {
+            background: #f3f4f6;
+        }
+
+        .intermediate-output-header .label {
+            font-size: 13px;
+            font-weight: 600;
+            color: #374151;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .intermediate-output-header .hint {
+            font-size: 11px;
+            font-weight: 400;
+            color: #9ca3af;
+            font-style: italic;
+        }
+
+        .intermediate-output-header .toggle-icon {
+            font-size: 12px;
+            color: #6b7280;
+            transition: transform 0.3s;
+        }
+
+        .intermediate-output.expanded .toggle-icon {
+            transform: rotate(180deg);
+        }
+
+        .intermediate-output-content {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.3s ease, padding 0.3s ease;
+        }
+
+        .intermediate-output.expanded .intermediate-output-content {
+            max-height: 500px;
+            padding: 12px 14px;
+            overflow-y: auto;
+        }
+
+        .intermediate-output-text {
+            font-size: 13px;
+            line-height: 1.6;
+            color: #4b5563;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+        
+        /* 🔑 新增：思考光标样式 */
+        .thinking-cursor {
+            display: inline-block;
+            margin-left: 8px;
+            padding: 4px 12px;
+            background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 600;
+            animation: thinkingPulse 1.5s ease-in-out infinite;
+        }
+        
+        @keyframes thinkingPulse {
+            0%, 100% {
+                opacity: 0.6;
+                transform: scale(0.98);
+            }
+            50% {
+                opacity: 1;
+                transform: scale(1);
+            }
+        }
+        
+        .thinking-cursor::after {
+            content: '...';
+            animation: thinkingDots 1.5s steps(4, end) infinite;
+        }
+        
+        @keyframes thinkingDots {
+            0%, 20% { content: '.'; }
+            40% { content: '..'; }
+            60%, 100% { content: '...'; }
+        }
     </style>
 </head>
 <body class="checking-auth">
@@ -756,6 +940,7 @@
     let groupName = '';
     let llmType = 'original';
     let groupDescription = '';
+    let currentThinkingContainerId = null;
 
     // DOM元素
     const chatContainer = document.getElementById('chatContainer');
@@ -915,20 +1100,196 @@
         }
     });
 
-    // 发送消息 - 流式版本
+    // ========== 修改后的思考相关函数 ==========
+    
+    // 创建思考步骤容器
+    function createThinkingContainer() {
+        const welcome = document.querySelector('.welcome-message');
+        if (welcome) welcome.remove();
+
+        const uniqueId = `thinking-${Date.now()}`;
+        currentThinkingContainerId = uniqueId;
+        
+        const thinkingDiv = document.createElement('div');
+        thinkingDiv.className = 'message assistant thinking-message';
+        thinkingDiv.id = uniqueId;
+        thinkingDiv.dataset.thinkingContainer = 'true';
+
+        const now = new Date();
+        const timeString = now.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+
+        thinkingDiv.innerHTML = `
+            <div class="message-header">
+                <span class="message-role">AI助手</span>
+                <span class="message-time">${timeString}</span>
+            </div>
+            <div class="thinking-steps" data-steps-container="${uniqueId}"></div>
+        `;
+
+        chatContainer.appendChild(thinkingDiv);
+        chatContainer.scrollTop = chatContainer.scrollHeight;
+        return thinkingDiv;
+    }
+
+    // 添加思考步骤
+    function addThinkingStep(stepId, message, isActive = true) {
+        let thinkingContainer = currentThinkingContainerId ? 
+            document.getElementById(currentThinkingContainerId) : null;
+        
+        if (!thinkingContainer) {
+            thinkingContainer = createThinkingContainer();
+        }
+
+        const stepsContainer = thinkingContainer.querySelector('.thinking-steps');
+        
+        const previousSteps = stepsContainer.querySelectorAll('.thinking-step');
+        previousSteps.forEach(step => {
+            if (step.classList.contains('active')) {
+                step.classList.remove('active');
+                step.classList.add('completed');
+                const spinner = step.querySelector('.step-spinner');
+                if (spinner) {
+                    spinner.remove();
+                    const contentDiv = step.querySelector('.step-content');
+                    if (contentDiv && !step.querySelector('.step-check')) {
+                        contentDiv.innerHTML += '<span class="step-check">✓</span>';
+                    }
+                }
+            }
+        });
+
+        const stepDiv = document.createElement('div');
+        stepDiv.className = `thinking-step ${isActive ? 'active' : 'completed'}`;
+        stepDiv.id = `step-${currentThinkingContainerId}-${stepId}`;
+        
+        const icon = message.split(' ')[0];
+        const text = message.substring(message.indexOf(' ') + 1);
+        
+        stepDiv.innerHTML = `
+            <span class="step-icon">${icon}</span>
+            <div class="step-content">
+                <span>${text}</span>
+                ${isActive ? '<span class="step-spinner"></span>' : '<span class="step-check">✓</span>'}
+            </div>
+        `;
+
+        stepsContainer.appendChild(stepDiv);
+        chatContainer.scrollTop = chatContainer.scrollHeight;
+    }
+
+    // 标记步骤完成
+    function markStepComplete(stepId) {
+        const stepDiv = document.getElementById(`step-${currentThinkingContainerId}-${stepId}`);
+        if (!stepDiv) return;
+        
+        stepDiv.classList.remove('active');
+        stepDiv.classList.add('completed');
+        
+        const spinner = stepDiv.querySelector('.step-spinner');
+        if (spinner) {
+            spinner.remove();
+            const contentDiv = stepDiv.querySelector('.step-content');
+            if (contentDiv && !stepDiv.querySelector('.step-check')) {
+                contentDiv.innerHTML += '<span class="step-check">✓</span>';
+            }
+        }
+    }
+    
+    // 🔑 新增：显示思考光标
+    function showThinkingCursor() {
+        const thinkingContainer = currentThinkingContainerId ? 
+            document.getElementById(currentThinkingContainerId) : null;
+        
+        if (!thinkingContainer) return;
+        
+        const stepsContainer = thinkingContainer.querySelector('.thinking-steps');
+        
+        // 移除已有的思考光标
+        const existingCursor = stepsContainer.querySelector('.thinking-cursor-container');
+        if (existingCursor) {
+            existingCursor.remove();
+        }
+        
+        // 创建思考光标容器
+        const cursorContainer = document.createElement('div');
+        cursorContainer.className = 'thinking-cursor-container';
+        cursorContainer.style.cssText = 'padding: 10px 0; display: flex; align-items: center;';
+        
+        cursorContainer.innerHTML = `
+            <span style="color: #6b7280; font-size: 14px;">正在思考</span>
+            <span class="thinking-cursor">思考中</span>
+        `;
+        
+        stepsContainer.appendChild(cursorContainer);
+        chatContainer.scrollTop = chatContainer.scrollHeight;
+    }
+    
+    // 🔑 新增：移除思考光标
+    function hideThinkingCursor() {
+        const thinkingContainer = currentThinkingContainerId ? 
+            document.getElementById(currentThinkingContainerId) : null;
+        
+        if (!thinkingContainer) return;
+        
+        const cursorContainer = thinkingContainer.querySelector('.thinking-cursor-container');
+        if (cursorContainer) {
+            cursorContainer.remove();
+        }
+    }
+
+    // 添加中间输出（折叠框）
+    function addIntermediateOutput(stepId, content, label) {
+        const stepDiv = document.getElementById(`step-${currentThinkingContainerId}-${stepId}`);
+        if (!stepDiv) return;
+        
+        const outputId = `output-${currentThinkingContainerId}-${stepId}-${Date.now()}`;
+        
+        const outputDiv = document.createElement('div');
+        outputDiv.className = 'intermediate-output';
+        outputDiv.id = outputId;
+        
+        outputDiv.innerHTML = `
+            <div class="intermediate-output-header" onclick="toggleIntermediateOutput('${outputId}')">
+                <div class="label">
+                    ${label}
+                    <span class="hint">(点击展开查看)</span>
+                </div>
+                <span class="toggle-icon">▼</span>
+            </div>
+            <div class="intermediate-output-content">
+                <div class="intermediate-output-text">${escapeHtml(content)}</div>
+            </div>
+        `;
+        
+        stepDiv.after(outputDiv);
+        chatContainer.scrollTop = chatContainer.scrollHeight;
+    }
+
+    // 切换中间输出的展开/折叠
+    function toggleIntermediateOutput(outputId) {
+        const outputDiv = document.getElementById(outputId);
+        if (!outputDiv) return;
+        
+        outputDiv.classList.toggle('expanded');
+        
+        setTimeout(() => {
+            if (outputDiv.classList.contains('expanded')) {
+                outputDiv.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            }
+        }, 300);
+    }
+
+    // 发送消息 - 流式版本 - 🔑 添加思考光标逻辑
     async function sendMessage() {
         const message = userInput.value.trim();
         if (!message) return;
 
-        // 显示用户消息
+        currentThinkingContainerId = null;
+
         displayMessage(message, true);
         userInput.value = '';
         userInput.style.height = 'auto';
 
-        // 显示输入指示器
-        showTypingIndicator();
-
-        // 禁用发送按钮
         sendBtn.disabled = true;
 
         try {
@@ -949,18 +1310,13 @@
                 throw new Error(`HTTP error! status: ${response.status}`);
             }
 
-            // 移除输入指示器
-            removeTypingIndicator();
-
-            // 创建 AI 消息容器
-            const aiMessageDiv = createAIMessageContainer();
-            const contentDiv = aiMessageDiv.querySelector('.message-content');
-
-            // 读取流式数据
             const reader = response.body.getReader();
             const decoder = new TextDecoder();
             let buffer = '';
             let fullContent = '';
+            let aiMessageDiv = null;
+            let contentDiv = null;
+            let lastStepWasGenerating = false; // 🔑 追踪是否完成了generating步骤
 
             while (true) {
                 const { done, value } = await reader.read();
@@ -969,9 +1325,8 @@
 
                 buffer += decoder.decode(value, { stream: true });
                 
-                // 处理可能的多行数据
                 const lines = buffer.split('\n');
-                buffer = lines.pop(); // 保留最后一个不完整的行
+                buffer = lines.pop();
 
                 for (const line of lines) {
                     if (line.startsWith('data: ')) {
@@ -981,19 +1336,41 @@
                             const data = JSON.parse(jsonStr);
                             
                             if (data.type === 'session_id') {
-                                // 更新 session_id
                                 currentSessionId = data.session_id;
                                 deleteBtn.style.display = 'block';
                                 
+                            } else if (data.type === 'thinking') {
+                                addThinkingStep(data.step, data.message, true);
+                                
+                            } else if (data.type === 'thinking_complete') {
+                                markStepComplete(data.step);
+                                
+                                // 🔑 如果是 generating 步骤完成，显示思考光标
+                                if (data.step === 'generating') {
+                                    lastStepWasGenerating = true;
+                                    showThinkingCursor();
+                                }
+                                
+                            } else if (data.type === 'intermediate_output') {
+                                addIntermediateOutput(data.step, data.content, data.label);
+                                
                             } else if (data.type === 'content') {
-                                // 追加内容
+                                // 🔑 开始接收内容时，移除思考光标
+                                if (lastStepWasGenerating) {
+                                    hideThinkingCursor();
+                                    lastStepWasGenerating = false;
+                                }
+                                
+                                if (!aiMessageDiv) {
+                                    aiMessageDiv = createAIMessageContainer();
+                                    contentDiv = aiMessageDiv.querySelector('.message-content');
+                                }
+                                
                                 fullContent += data.content;
                                 
-                                // 实时渲染 Markdown
                                 if (typeof marked !== 'undefined') {
                                     contentDiv.innerHTML = marked.parse(fullContent);
                                     
-                                    // 应用代码高亮
                                     if (typeof hljs !== 'undefined') {
                                         contentDiv.querySelectorAll('pre code').forEach((block) => {
                                             hljs.highlightElement(block);
@@ -1003,17 +1380,22 @@
                                     contentDiv.textContent = fullContent;
                                 }
                                 
-                                // 自动滚动
                                 chatContainer.scrollTop = chatContainer.scrollHeight;
                                 
                             } else if (data.type === 'done') {
-                                // 流式传输完成，移除光标
-                                contentDiv.classList.remove('streaming');
+                                if (contentDiv) {
+                                    contentDiv.classList.remove('streaming');
+                                }
                                 
-                                // 刷新历史会话列表
+                                // 🔑 确保移除思考光标
+                                hideThinkingCursor();
+                                currentThinkingContainerId = null;
+                                
                                 await loadHistorySessions();
                                 
                             } else if (data.type === 'error') {
+                                hideThinkingCursor();
+                                currentThinkingContainerId = null;
                                 displayMessage('抱歉，发生了错误：' + (data.error || '未知错误'), false);
                             }
                             
@@ -1026,36 +1408,12 @@
 
         } catch (error) {
             console.error('Error:', error);
-            removeTypingIndicator();
+            hideThinkingCursor();
+            currentThinkingContainerId = null;
             displayMessage('连接错误，请检查网络后重试。', false);
         } finally {
             sendBtn.disabled = false;
         }
-    }
-
-    // 显示输入指示器
-    function showTypingIndicator() {
-        const indicator = document.createElement('div');
-        indicator.className = 'message assistant typing';
-        indicator.id = 'typingIndicator';
-        indicator.innerHTML = `
-            <div class="message-header">
-                <span class="message-role">AI助手</span>
-            </div>
-            <div class="typing-indicator">
-                <span></span>
-                <span></span>
-                <span></span>
-            </div>
-        `;
-        chatContainer.appendChild(indicator);
-        chatContainer.scrollTop = chatContainer.scrollHeight;
-    }
-
-    // 移除输入指示器
-    function removeTypingIndicator() {
-        const indicator = document.getElementById('typingIndicator');
-        if (indicator) indicator.remove();
     }
 
     // 从后端加载历史会话列表
@@ -1119,6 +1477,7 @@
             
             if (data.success && data.session) {
                 currentSessionId = sessionId;
+                currentThinkingContainerId = null;
                 deleteBtn.style.display = 'block';
                 
                 chatContainer.innerHTML = '';
@@ -1149,6 +1508,7 @@
     // 创建新对话
     function createNewChat() {
         currentSessionId = null;
+        currentThinkingContainerId = null;
         clearChat();
         deleteBtn.style.display = 'none';
         
@@ -1174,6 +1534,7 @@
             
             if (data.success) {
                 currentSessionId = null;
+                currentThinkingContainerId = null;
                 deleteBtn.style.display = 'none';
                 clearChat();
                 await loadHistorySessions();

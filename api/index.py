@@ -147,7 +147,7 @@ def health_check():
 # 新增流式聊天路由
 @app.route('/chat/stream', methods=['POST'])
 def chat_stream():
-    """处理聊天消息 - 流式输出版本"""
+    """处理聊天消息 - 流式输出版本（带中间输出展示）"""
     
     def generate():
         try:
@@ -178,7 +178,6 @@ def chat_stream():
                     user_message[:30] + ('...' if len(user_message) > 30 else '')
                 )
                 
-                # 发送 session_id
                 yield f"data: {json.dumps({'type': 'session_id', 'session_id': session_id})}\n\n"
             
             # 获取对话历史
@@ -192,13 +191,12 @@ def chat_stream():
                         'content': msg['content']
                     })
             
-            # 添加当前用户消息
             if not messages or messages[-1]['role'] != 'user':
                 messages.append({'role': 'user', 'content': user_message})
             
             logger.info(f"Streaming response for student {student_id}, type: {llm_type}")
             
-            # ========== 根据 llm_type 路由到不同的处理逻辑 ==========
+            # ========== 根据 llm_type 路由 ==========
             full_response = ""
             
             if llm_type == 'original':
@@ -230,20 +228,317 @@ def chat_stream():
                                 logger.warning(f"JSON decode error: {e}")
                                 continue
             
-            else:
-                # SRL / AI Ethics / SRL+Ethics 组：先获取完整响应，再模拟流式输出
-                result = route_llm_call(llm_type, messages, student_id)
+            elif llm_type == 'srl':
+                # ========== SRL组工作流 ==========
+                import time
+                
+                # 步骤1: 分析问题
+                yield f"data: {json.dumps({'type': 'thinking', 'step': 'analyzing', 'message': '💭 正在分析你的问题...'})}\n\n"
+                time.sleep(0.3)
+                yield f"data: {json.dumps({'type': 'thinking_complete', 'step': 'analyzing'})}\n\n"
+                
+                # 步骤2: 调用SRL Agent
+                yield f"data: {json.dumps({'type': 'thinking', 'step': 'srl_guidance', 'message': '🎯 生成学习指导建议...'})}\n\n"
+                
+                srl_agent_prompt = {
+                    'role': 'system',
+                    'content': '''你是一个自我调节学习(SRL)指导专家。
+
+请分析学生的问题,并提供简短的SRL指导建议(2-3句话),帮助学生:
+- 设定明确的学习目标
+- 监控学习进度
+- 反思学习策略
+- 提供元认知支持
+
+只需要返回SRL指导建议,不要直接回答学生的问题。'''
+                }
+                
+                srl_agent_messages = [
+                    srl_agent_prompt,
+                    {'role': 'user', 'content': f'学生问题: {user_message}\n\n请给出SRL指导建议:'}
+                ]
+                
+                try:
+                    srl_response = call_qwen_api(srl_agent_messages, **AGENT_CONFIG['short_instruction'])
+                    srl_instruction = srl_response['choices'][0]['message']['content'].strip()
+                    
+                    # 💡 发送SRL指导的中间输出
+                    yield f"data: {json.dumps({
+                        'type': 'intermediate_output',
+                        'step': 'srl_guidance',
+                        'content': srl_instruction,
+                        'label': '💡 SRL学习指导建议'
+                    })}\n\n"
+                    
+                    time.sleep(0.3)
+                    yield f"data: {json.dumps({'type': 'thinking_complete', 'step': 'srl_guidance'})}\n\n"
+                    
+                except Exception as e:
+                    logger.error(f"Error calling SRL agent: {e}")
+                    srl_instruction = "请思考你的学习目标,并在学习过程中监控自己的进度。"
+                
+                # 步骤3: 生成最终回答
+                yield f"data: {json.dumps({'type': 'thinking', 'step': 'generating', 'message': '✍️ 整合指导并生成回答...'})}\n\n"
+                time.sleep(0.3)
+                yield f"data: {json.dumps({'type': 'thinking_complete', 'step': 'generating'})}\n\n"
+
+                
+                final_system_prompt = {
+                    'role': 'system',
+                    'content': f'''你是一个支持自我调节学习(SRL)的AI助手。
+
+**SRL 指导建议:**
+{srl_instruction}
+
+请在回答学生问题时:
+1. 自然地融入上述SRL指导建议
+2. 提供准确、有帮助的答案
+3. 鼓励学生进行自我反思和监控
+4. 帮助学生"学会如何学习"
+
+记住:你的回答应该既解决学生的具体问题,又促进他们的自我调节学习能力。'''
+                }
+                
+                final_messages = [final_system_prompt]
+                if len(messages) > 1:
+                    for msg in messages[:-1]:
+                        final_messages.append({'role': msg['role'], 'content': msg['content']})
+                final_messages.append({'role': 'user', 'content': user_message})
+                
+                result = call_qwen_api(final_messages, **AGENT_CONFIG['full_response'])
                 
                 if 'choices' in result and result['choices']:
                     full_response = result['choices'][0]['message']['content'].strip()
+                    time.sleep(0.2)
                     
-                    # 模拟流式输出（每次发送 5-10 个字符）
-                    import time
                     chunk_size = 8
                     for i in range(0, len(full_response), chunk_size):
                         chunk = full_response[i:i+chunk_size]
                         yield f"data: {json.dumps({'type': 'content', 'content': chunk})}\n\n"
-                        time.sleep(0.05)  # 50ms 延迟，模拟打字效果
+                        time.sleep(0.05)
+                else:
+                    yield f"data: {json.dumps({'type': 'error', 'error': 'Invalid API response', 'success': False})}\n\n"
+                    return
+            
+            elif llm_type == 'ai_ethics':
+                # ========== AI Ethics组工作流 ==========
+                import time
+                
+                yield f"data: {json.dumps({'type': 'thinking', 'step': 'analyzing', 'message': '💭 正在分析你的问题...'})}\n\n"
+                time.sleep(0.3)
+                yield f"data: {json.dumps({'type': 'thinking_complete', 'step': 'analyzing'})}\n\n"
+                
+                yield f"data: {json.dumps({'type': 'thinking', 'step': 'ethics_guidance', 'message': '🤔 思考AI伦理要点...'})}\n\n"
+                
+                ethics_agent_prompt = {
+                    'role': 'system',
+                    'content': '''你是一个AI伦理教育专家。
+
+请分析学生的问题,并提供简短的AI伦理指导建议(2-3句话),帮助学生:
+- 识别AI技术中的潜在偏见和公平性问题
+- 理解数据隐私和安全的重要性
+- 培养对AI使用的批判性思维
+- 认识AI的社会影响和责任
+
+只需要返回AI伦理指导建议,不要直接回答学生的问题。'''
+                }
+                
+                ethics_agent_messages = [
+                    ethics_agent_prompt,
+                    {'role': 'user', 'content': f'学生问题: {user_message}\n\n请给出AI伦理指导建议:'}
+                ]
+                
+                try:
+                    ethics_response = call_qwen_api(ethics_agent_messages, **AGENT_CONFIG['short_instruction'])
+                    ethics_instruction = ethics_response['choices'][0]['message']['content'].strip()
+                    
+                    yield f"data: {json.dumps({
+                        'type': 'intermediate_output',
+                        'step': 'ethics_guidance',
+                        'content': ethics_instruction,
+                        'label': '🤔 AI伦理思考要点'
+                    })}\n\n"
+                    
+                    time.sleep(0.3)
+                    yield f"data: {json.dumps({'type': 'thinking_complete', 'step': 'ethics_guidance'})}\n\n"
+                    
+                except Exception as e:
+                    logger.error(f"Error calling AI Ethics agent: {e}")
+                    ethics_instruction = "在使用AI技术时,请思考可能存在的偏见和伦理问题,并负责任地使用。"
+                
+                yield f"data: {json.dumps({'type': 'thinking', 'step': 'generating', 'message': '✍️ 整合伦理视角并生成回答...'})}\n\n"
+                time.sleep(0.3)
+                yield f"data: {json.dumps({'type': 'thinking_complete', 'step': 'generating'})}\n\n"
+                
+                final_system_prompt = {
+                    'role': 'system',
+                    'content': f'''你是一个注重AI伦理教育的AI助手。
+
+**AI伦理指导建议:**
+{ethics_instruction}
+
+请在回答学生问题时:
+1. 自然地融入上述AI伦理指导建议
+2. 提供准确、有帮助的答案
+3. 适时讨论AI技术的伦理问题(偏见、公平性、隐私等)
+4. 鼓励学生批判性地思考AI的使用
+5. 强调负责任地使用AI工具的重要性
+
+记住:你的回答应该既解决学生的具体问题,又培养他们对AI伦理的意识和批判性思维。'''
+                }
+                
+                final_messages = [final_system_prompt]
+                if len(messages) > 1:
+                    for msg in messages[:-1]:
+                        final_messages.append({'role': msg['role'], 'content': msg['content']})
+                final_messages.append({'role': 'user', 'content': user_message})
+                
+                result = call_qwen_api(final_messages, **AGENT_CONFIG['full_response'])
+                
+                if 'choices' in result and result['choices']:
+                    full_response = result['choices'][0]['message']['content'].strip()
+                    time.sleep(0.2)
+                    
+                    chunk_size = 8
+                    for i in range(0, len(full_response), chunk_size):
+                        chunk = full_response[i:i+chunk_size]
+                        yield f"data: {json.dumps({'type': 'content', 'content': chunk})}\n\n"
+                        time.sleep(0.05)
+                else:
+                    yield f"data: {json.dumps({'type': 'error', 'error': 'Invalid API response', 'success': False})}\n\n"
+                    return
+            
+            elif llm_type == 'srl_and_ethics':
+                # ========== SRL+Ethics组工作流 ==========
+                import time
+                
+                yield f"data: {json.dumps({'type': 'thinking', 'step': 'analyzing', 'message': '💭 正在分析你的问题...'})}\n\n"
+                time.sleep(0.3)
+                yield f"data: {json.dumps({'type': 'thinking_complete', 'step': 'analyzing'})}\n\n"
+                
+                # 第一步: AI Ethics
+                yield f"data: {json.dumps({'type': 'thinking', 'step': 'ethics_guidance', 'message': '🤔 思考AI伦理要点...'})}\n\n"
+                
+                ethics_agent_prompt = {
+                    'role': 'system',
+                    'content': '''你是一个AI伦理教育专家。
+
+请分析学生的问题,并提供简短的AI伦理指导建议(2-3句话),帮助学生:
+- 识别AI技术中的潜在偏见和公平性问题
+- 理解数据隐私和安全的重要性
+- 培养对AI使用的批判性思维
+- 认识AI的社会影响和责任
+
+只需要返回AI伦理指导建议,不要直接回答学生的问题。'''
+                }
+                
+                ethics_agent_messages = [
+                    ethics_agent_prompt,
+                    {'role': 'user', 'content': f'学生问题: {user_message}\n\n请给出AI伦理指导建议:'}
+                ]
+                
+                try:
+                    ethics_response = call_qwen_api(ethics_agent_messages, **AGENT_CONFIG['short_instruction'])
+                    ethics_instruction = ethics_response['choices'][0]['message']['content'].strip()
+                    
+                    yield f"data: {json.dumps({
+                        'type': 'intermediate_output',
+                        'step': 'ethics_guidance',
+                        'content': ethics_instruction,
+                        'label': '🤔 AI伦理思考要点'
+                    })}\n\n"
+                    
+                    time.sleep(0.3)
+                    yield f"data: {json.dumps({'type': 'thinking_complete', 'step': 'ethics_guidance'})}\n\n"
+                    
+                except Exception as e:
+                    logger.error(f"Error calling AI Ethics agent: {e}")
+                    ethics_instruction = "在使用AI技术时,请思考可能存在的偏见和伦理问题,并负责任地使用。"
+                
+                # 第二步: SRL调整
+                yield f"data: {json.dumps({'type': 'thinking', 'step': 'srl_adjustment', 'message': '🎯 调整为学习指导...'})}\n\n"
+                
+                srl_agent_prompt = {
+                    'role': 'system',
+                    'content': '''你是一个自我调节学习(SRL)指导专家。
+
+你将收到一个AI伦理方面的指导建议。请基于SRL原则对这个指导进行调整和扩展,使其:
+- 鼓励学生设定学习目标
+- 引导学生监控和评估自己的理解
+- 促进学生的元认知思考
+- 帮助学生反思学习策略
+
+请保留原有的AI伦理内容,但用SRL的视角进行重新表述和扩展(3-4句话)。'''
+                }
+                
+                srl_agent_messages = [
+                    srl_agent_prompt,
+                    {'role': 'user', 'content': f'''学生的原始问题: {user_message}
+
+AI伦理指导建议:
+{ethics_instruction}
+
+请基于SRL原则调整和扩展这个指导:'''}
+                ]
+                
+                try:
+                    srl_response = call_qwen_api(srl_agent_messages, **AGENT_CONFIG['medium_instruction'])
+                    final_instruction = srl_response['choices'][0]['message']['content'].strip()
+                    
+                    yield f"data: {json.dumps({
+                        'type': 'intermediate_output',
+                        'step': 'srl_adjustment',
+                        'content': final_instruction,
+                        'label': '🎯 整合后的学习指导'
+                    })}\n\n"
+                    
+                    time.sleep(0.3)
+                    yield f"data: {json.dumps({'type': 'thinking_complete', 'step': 'srl_adjustment'})}\n\n"
+                    
+                except Exception as e:
+                    logger.error(f"Error calling SRL agent: {e}")
+                    final_instruction = ethics_instruction + " 请在学习过程中监控自己的理解,并反思你的学习策略。"
+                
+                # 第三步: 生成最终回答
+                yield f"data: {json.dumps({'type': 'thinking', 'step': 'generating', 'message': '✍️ 生成最终回答...'})}\n\n"
+                time.sleep(0.3)
+                yield f"data: {json.dumps({'type': 'thinking_complete', 'step': 'generating'})}\n\n"
+
+                
+                final_system_prompt = {
+                    'role': 'system',
+                    'content': f'''你是一个同时支持自我调节学习(SRL)和AI伦理教育的AI助手。
+
+**整合指导建议(SRL + AI Ethics):**
+{final_instruction}
+
+请在回答学生问题时:
+1. 自然地融入上述整合指导建议
+2. 提供准确、有帮助的答案
+3. **SRL方面**: 鼓励学生设定学习目标、监控进度、反思策略
+4. **AI伦理方面**: 讨论AI的伦理问题、培养批判性思维
+5. 平衡这两个方面,帮助学生成为负责任的、自主的学习者
+
+记住:你的回答应该既解决学生的具体问题,又同时促进他们的自我调节学习能力和AI伦理意识。'''
+                }
+                
+                final_messages = [final_system_prompt]
+                if len(messages) > 1:
+                    for msg in messages[:-1]:
+                        final_messages.append({'role': msg['role'], 'content': msg['content']})
+                final_messages.append({'role': 'user', 'content': user_message})
+                
+                result = call_qwen_api(final_messages, **AGENT_CONFIG['full_response'])
+                
+                if 'choices' in result and result['choices']:
+                    full_response = result['choices'][0]['message']['content'].strip()
+                    time.sleep(0.2)
+                    
+                    chunk_size = 8
+                    for i in range(0, len(full_response), chunk_size):
+                        chunk = full_response[i:i+chunk_size]
+                        yield f"data: {json.dumps({'type': 'content', 'content': chunk})}\n\n"
+                        time.sleep(0.05)
                 else:
                     yield f"data: {json.dumps({'type': 'error', 'error': 'Invalid API response', 'success': False})}\n\n"
                     return

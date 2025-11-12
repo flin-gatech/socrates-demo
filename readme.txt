@@ -25,3 +25,10 @@ SOCRATES-DEMO/
 ├── requirements.txt
 ├── vercel.json
 └── .gitignore
+
+
+#S020是田老师的测试账号
+什么是最小二乘法
+什么是曼哈顿距离
+
+如何收集学生的信息用于机器学习模型构建预测学生的学习成绩

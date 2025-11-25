@@ -141,7 +141,8 @@ def health_check():
     return jsonify({
         'status': 'healthy',
         'api_configured': bool(API_KEY),
-        'students_loaded': len(STUDENTS_CONFIG.get('groups', {}))
+        'students_loaded': len(STUDENTS_CONFIG.get('groups', {})),
+        'redis_available': redis_db.available
     })
 
 # 新增流式聊天路由
@@ -552,7 +553,7 @@ AI伦理指导建议:
             
             redis_db.add_message_to_conversation(session_id, 'user', user_message, user_word_count)
             redis_db.add_message_to_conversation(session_id, 'assistant', full_response, ai_word_count)
-            redis_db.add_to_student_stats(student_id, 2, 0)
+            redis_db.add_to_student_stats(student_id, 2, 0)  # 2条消息
             
         except Exception as e:
             logger.error(f"Stream error: {e}")
@@ -1233,38 +1234,43 @@ def export_statistics():
 
 @app.route('/api/sessions', methods=['GET'])
 def get_sessions():
-    """获取会话列表 - 从 Redis 获取"""
+    """获取会话列表 - 使用优化的学生对话索引"""
     try:
         student_id = request.args.get('student_id')
         
         if not student_id:
             return jsonify({'error': '缺少学生ID', 'success': False}), 400
         
-        # 从 Redis 获取该学生的所有对话
-        all_conversations = redis_db.get_all_conversations()
+        logger.info(f"Loading sessions for student: {student_id}")
         
-        # 筛选该学生的对话
+        # 🔑 使用新的方法获取学生对话
+        conversations = redis_db.get_student_conversations(student_id)
+        
+        logger.info(f"Found {len(conversations)} conversations for student {student_id}")
+        
+        # 构建返回数据
         student_sessions = []
-        for conv in all_conversations:
-            if conv.get('student_id') == student_id:
-                session_info = {
-                    'id': conv['conversation_id'],
-                    'title': conv.get('title', '无标题对话'),
-                    'created_at': conv['created_at'],
-                    'message_count': conv['message_count']
-                }
-                
-                # 添加最后一条消息预览
-                if conv.get('messages'):
-                    last_msg = conv['messages'][-1]
-                    session_info['last_message'] = last_msg['content'][:50] + ('...' if len(last_msg['content']) > 50 else '')
-                else:
-                    session_info['last_message'] = ''
-                
-                student_sessions.append(session_info)
+        for conv in conversations:
+            session_info = {
+                'id': conv['conversation_id'],
+                'title': conv.get('title', '无标题对话'),
+                'created_at': conv['created_at'],
+                'message_count': conv.get('message_count', 0)
+            }
+            
+            # 添加最后一条消息预览
+            if conv.get('messages') and len(conv['messages']) > 0:
+                last_msg = conv['messages'][-1]
+                session_info['last_message'] = last_msg['content'][:50] + ('...' if len(last_msg['content']) > 50 else '')
+            else:
+                session_info['last_message'] = ''
+            
+            student_sessions.append(session_info)
         
         # 按创建时间倒序排列
         student_sessions.sort(key=lambda x: x['created_at'], reverse=True)
+        
+        logger.info(f"Returning {len(student_sessions)} sessions")
         
         return jsonify({
             'sessions': student_sessions,
@@ -1272,7 +1278,7 @@ def get_sessions():
         })
         
     except Exception as e:
-        logger.error(f"Error getting sessions: {e}")
+        logger.error(f"Error getting sessions: {e}", exc_info=True)
         return jsonify({'error': str(e), 'success': False}), 500
 
 
@@ -1304,7 +1310,7 @@ def get_session(session_id):
 
 @app.route('/api/sessions/<session_id>', methods=['DELETE'])
 def delete_session(session_id):
-    """删除会话 - 从 Redis 删除"""
+    """删除会话 - 使用新的删除方法"""
     try:
         if not redis_db.available:
             return jsonify({
@@ -1320,11 +1326,11 @@ def delete_session(session_id):
                 'success': False
             }), 404
         
-        # 从 Redis 删除
-        key = f"conversation:{session_id}"
-        success = redis_db._delete(key)
+        # 🔑 使用新的删除方法（同时更新索引）
+        success = redis_db.delete_conversation(session_id)
         
         if success:
+            logger.info(f"Deleted conversation {session_id}")
             return jsonify({
                 'message': '会话已删除',
                 'success': True
@@ -1405,5 +1411,6 @@ if __name__ == '__main__':
     logger.info(f"Starting AI Chat on port {port}")
     logger.info(f"API Key configured: {bool(API_KEY)}")
     logger.info(f"Student groups loaded: {len(STUDENTS_CONFIG.get('groups', {}))}")
+    logger.info(f"Redis available: {redis_db.available}")
     
     app.run(debug=debug, port=port, host='0.0.0.0')

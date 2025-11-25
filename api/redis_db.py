@@ -7,7 +7,7 @@ import requests
 logger = logging.getLogger(__name__)
 
 class RedisDB:
-    """Upstash Redis REST API 数据管理"""
+    """Upstash Redis REST API 数据管理 - 修复版"""
     
     def __init__(self):
         self.rest_url = os.environ.get('UPSTASH_REDIS_REST_URL')
@@ -47,13 +47,13 @@ class RedisDB:
                 self.rest_url,
                 headers=headers,
                 json=command,
-                timeout=5
+                timeout=10  # 增加超时时间
             )
             
             if response.status_code == 200:
                 return response.json()
             else:
-                logger.warning(f"Redis command failed: {response.status_code}")
+                logger.warning(f"Redis command failed: {response.status_code} - {response.text}")
                 return None
                 
         except Exception as e:
@@ -83,7 +83,44 @@ class RedisDB:
     def _keys(self, pattern):
         """获取匹配的键列表"""
         result = self._execute_command(['KEYS', pattern])
-        return result.get('result', []) if result else []
+        if result and 'result' in result:
+            return result.get('result', []) or []
+        return []
+    
+    def _scan(self, cursor=0, match=None, count=100):
+        """使用 SCAN 命令迭代键（比 KEYS 更安全）"""
+        command = ['SCAN', str(cursor)]
+        if match:
+            command.extend(['MATCH', match])
+        if count:
+            command.extend(['COUNT', str(count)])
+        
+        result = self._execute_command(command)
+        if result and 'result' in result:
+            # SCAN 返回 [next_cursor, [keys...]]
+            scan_result = result['result']
+            if isinstance(scan_result, list) and len(scan_result) == 2:
+                return int(scan_result[0]), scan_result[1] or []
+        return 0, []
+    
+    def _sadd(self, key, *members):
+        """添加到集合"""
+        command = ['SADD', key] + list(members)
+        result = self._execute_command(command)
+        return result is not None
+    
+    def _smembers(self, key):
+        """获取集合所有成员"""
+        result = self._execute_command(['SMEMBERS', key])
+        if result and 'result' in result:
+            return result.get('result', []) or []
+        return []
+    
+    def _srem(self, key, *members):
+        """从集合中移除成员"""
+        command = ['SREM', key] + list(members)
+        result = self._execute_command(command)
+        return result is not None
     
     def _hset(self, key, mapping):
         """设置哈希表"""
@@ -160,7 +197,7 @@ class RedisDB:
     # ============ 对话数据操作 ============
     
     def create_conversation(self, conv_id, student_id, group_info, llm_type, title):
-        """创建新对话"""
+        """创建新对话 - 同时维护学生对话索引"""
         if not self.available:
             logger.debug("Redis unavailable, skipping create_conversation")
             return True
@@ -178,7 +215,16 @@ class RedisDB:
                 'messages': []
             }
             key = f"conversation:{conv_id}"
-            return self._set(key, json.dumps(conv_data), ex=86400*30)
+            success = self._set(key, json.dumps(conv_data), ex=86400*30)
+            
+            # 🔑 维护学生对话索引
+            if success:
+                index_key = f"student_conversations:{student_id}"
+                self._sadd(index_key, conv_id)
+                self._expire(index_key, 86400*30)
+                logger.info(f"Created conversation {conv_id} for student {student_id}")
+            
+            return success
         except Exception as e:
             logger.warning(f"Error creating conversation: {e}")
             return False
@@ -191,7 +237,11 @@ class RedisDB:
         try:
             key = f"conversation:{conv_id}"
             data = self._get(key)
-            return json.loads(data) if data else None
+            if data:
+                return json.loads(data)
+            else:
+                logger.debug(f"Conversation {conv_id} not found")
+                return None
         except Exception as e:
             logger.warning(f"Error getting conversation: {e}")
             return None
@@ -205,6 +255,7 @@ class RedisDB:
         try:
             conv = self.get_conversation(conv_id)
             if not conv:
+                logger.warning(f"Conversation {conv_id} not found when adding message")
                 return False
             
             message = {
@@ -221,6 +272,94 @@ class RedisDB:
             return self._set(key, json.dumps(conv), ex=86400*30)
         except Exception as e:
             logger.warning(f"Error adding message to conversation: {e}")
+            return False
+    
+    def get_student_conversations(self, student_id):
+        """🔑 获取特定学生的所有对话 - 使用索引"""
+        if not self.available:
+            logger.debug("Redis unavailable, returning empty list")
+            return []
+        
+        try:
+            # 方法1: 使用学生对话索引（更快）
+            index_key = f"student_conversations:{student_id}"
+            conv_ids = self._smembers(index_key)
+            
+            logger.info(f"Found {len(conv_ids)} conversation IDs for student {student_id}")
+            
+            conversations = []
+            for conv_id in conv_ids:
+                conv = self.get_conversation(conv_id)
+                if conv:
+                    conversations.append(conv)
+                else:
+                    # 对话已过期，从索引中移除
+                    self._srem(index_key, conv_id)
+            
+            # 如果索引为空，尝试使用 KEYS 作为备选方案
+            if not conversations:
+                logger.info(f"Index empty, trying KEYS fallback for student {student_id}")
+                conversations = self._get_student_conversations_fallback(student_id)
+            
+            # 按创建时间倒序排列
+            conversations.sort(key=lambda x: x.get('created_at', ''), reverse=True)
+            
+            logger.info(f"Returning {len(conversations)} conversations for student {student_id}")
+            return conversations
+            
+        except Exception as e:
+            logger.error(f"Error getting student conversations: {e}")
+            return []
+    
+    def _get_student_conversations_fallback(self, student_id):
+        """使用 KEYS 作为备选方案获取学生对话"""
+        try:
+            keys = self._keys("conversation:*")
+            logger.info(f"KEYS fallback found {len(keys)} total conversation keys")
+            
+            conversations = []
+            index_key = f"student_conversations:{student_id}"
+            
+            for key in keys:
+                data = self._get(key)
+                if data:
+                    try:
+                        conv = json.loads(data)
+                        if conv.get('student_id') == student_id:
+                            conversations.append(conv)
+                            # 重建索引
+                            self._sadd(index_key, conv['conversation_id'])
+                    except json.JSONDecodeError:
+                        logger.warning(f"Invalid JSON in key {key}")
+            
+            if conversations:
+                self._expire(index_key, 86400*30)
+                
+            return conversations
+        except Exception as e:
+            logger.error(f"KEYS fallback error: {e}")
+            return []
+    
+    def delete_conversation(self, conv_id):
+        """删除对话 - 同时更新索引"""
+        if not self.available:
+            return False
+        
+        try:
+            # 先获取对话以找到 student_id
+            conv = self.get_conversation(conv_id)
+            if conv:
+                student_id = conv.get('student_id')
+                if student_id:
+                    # 从索引中移除
+                    index_key = f"student_conversations:{student_id}"
+                    self._srem(index_key, conv_id)
+            
+            # 删除对话
+            key = f"conversation:{conv_id}"
+            return self._delete(key)
+        except Exception as e:
+            logger.error(f"Error deleting conversation: {e}")
             return False
 
     # ============ 统计数据操作 ============
@@ -262,11 +401,17 @@ class RedisDB:
         
         try:
             keys = self._keys("conversation:*")
+            logger.info(f"get_all_conversations: found {len(keys)} keys")
+            
             conversations = []
             for key in keys:
                 data = self._get(key)
                 if data:
-                    conversations.append(json.loads(data))
+                    try:
+                        conversations.append(json.loads(data))
+                    except json.JSONDecodeError:
+                        logger.warning(f"Invalid JSON in key {key}")
+            
             return conversations
         except Exception as e:
             logger.warning(f"Error getting all conversations: {e}")

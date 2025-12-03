@@ -366,6 +366,49 @@
             background-color: #4b5563;
         }
 
+        /* 人格测试按钮样式 */
+        .personality-test-btn {
+            width: 100%;
+            padding: 10px;
+            margin-top: 8px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border: none;
+            color: white;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: 600;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+        }
+
+        .personality-test-btn:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+        }
+
+        .personality-test-btn.completed {
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+        }
+
+        .personality-test-btn .icon {
+            font-size: 14px;
+        }
+
+        .personality-status {
+            font-size: 11px;
+            color: #8e8ea0;
+            margin-top: 4px;
+            text-align: center;
+        }
+
+        .personality-status.completed {
+            color: #10b981;
+        }
+
         .session-list {
             flex: 1;
             overflow-y: auto;
@@ -804,6 +847,14 @@
                         <span class="group-badge" id="groupBadge">-</span>
                     </div>
                 </div>
+                
+                <!-- 人格测试按钮 -->
+                <button class="personality-test-btn" id="personalityTestBtn" onclick="goToPersonalityTest()">
+                    <span class="icon">🧠</span>
+                    <span id="personalityBtnText">人格特质测评</span>
+                </button>
+                <div class="personality-status" id="personalityStatus">检查中...</div>
+                
                 <button class="logout-btn" onclick="logout()">退出登录</button>
             </div>
 
@@ -1035,6 +1086,9 @@
             
             userInput.focus();
             loadHistorySessions();
+            
+            // 检查人格测试状态
+            checkPersonalityStatus();
         };
 
         // 自动调整输入框高度
@@ -1467,6 +1521,40 @@
             const div = document.createElement('div');
             div.textContent = text;
             return div.innerHTML;
+        }
+
+        // ========== 人格测试相关功能 ==========
+
+        // 检查人格测试状态
+        async function checkPersonalityStatus() {
+            try {
+                const response = await fetch(`/api/personality/check/${studentId}`);
+                const data = await response.json();
+                
+                const btn = document.getElementById('personalityTestBtn');
+                const status = document.getElementById('personalityStatus');
+                const btnText = document.getElementById('personalityBtnText');
+                
+                if (data.success && data.has_completed) {
+                    btn.classList.add('completed');
+                    btnText.textContent = '查看测评结果';
+                    status.textContent = '✓ 已完成测评';
+                    status.classList.add('completed');
+                } else {
+                    btn.classList.remove('completed');
+                    btnText.textContent = '人格特质测评';
+                    status.textContent = '尚未完成测评';
+                    status.classList.remove('completed');
+                }
+            } catch (error) {
+                console.error('检查人格测试状态失败:', error);
+                document.getElementById('personalityStatus').textContent = '状态未知';
+            }
+        }
+
+        // 跳转到人格测试页面
+        function goToPersonalityTest() {
+            window.location.href = '/personality-test';
         }
     </script>
 </body>

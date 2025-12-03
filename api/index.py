@@ -145,6 +145,167 @@ def health_check():
         'redis_available': redis_db.available
     })
 
+
+# ================== 人格测试相关路由 ==================
+
+@app.route('/personality-test')
+def personality_test_page():
+    """人格测试页面"""
+    try:
+        return render_template('personality_test.html')
+    except Exception as e:
+        logger.error(f"Error serving personality test page: {e}")
+        return f"Template error: {str(e)}", 500
+
+
+@app.route('/api/personality/save', methods=['POST'])
+def save_personality_results():
+    """保存学生人格测试结果"""
+    try:
+        data = request.get_json()
+        student_id = data.get('student_id')
+        scores = data.get('scores')
+        responses = data.get('responses')
+        language = data.get('language', 'zh')
+        completed_at = data.get('completed_at')
+        
+        if not student_id or not scores:
+            return jsonify({
+                'success': False,
+                'error': '缺少必要参数'
+            }), 400
+        
+        # 构建人格数据
+        personality_data = {
+            'student_id': student_id,
+            'scores': {
+                'extraversion': float(scores.get('E', 0)),
+                'agreeableness': float(scores.get('A', 0)),
+                'conscientiousness': float(scores.get('C', 0)),
+                'emotional_stability': float(scores.get('N', 0)),
+                'openness': float(scores.get('O', 0))
+            },
+            'raw_responses': responses,
+            'language': language,
+            'completed_at': completed_at or datetime.now(timezone.utc).isoformat(),
+            'test_version': 'IPIP-50'
+        }
+        
+        # 保存到 Redis
+        success = redis_db.save_personality(student_id, personality_data)
+        
+        if success:
+            logger.info(f"Personality data saved for student {student_id}")
+            return jsonify({
+                'success': True,
+                'message': '人格测试结果已保存'
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'error': '保存失败'
+            }), 500
+            
+    except Exception as e:
+        logger.error(f"Error saving personality results: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/personality/<student_id>', methods=['GET'])
+def get_personality_results(student_id):
+    """获取学生人格测试结果"""
+    try:
+        personality_data = redis_db.get_personality(student_id)
+        
+        if personality_data:
+            return jsonify({
+                'success': True,
+                'data': personality_data,
+                'has_completed': True
+            })
+        else:
+            return jsonify({
+                'success': True,
+                'data': None,
+                'has_completed': False
+            })
+            
+    except Exception as e:
+        logger.error(f"Error getting personality results: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/personality/check/<student_id>', methods=['GET'])
+def check_personality_status(student_id):
+    """检查学生是否已完成人格测试"""
+    try:
+        has_completed = redis_db.has_personality_data(student_id)
+        
+        return jsonify({
+            'success': True,
+            'has_completed': has_completed
+        })
+            
+    except Exception as e:
+        logger.error(f"Error checking personality status: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/export/personality', methods=['GET'])
+def export_personality_data():
+    """导出所有学生人格测试数据为CSV"""
+    try:
+        import pandas as pd
+        from io import BytesIO
+        from flask import send_file
+        
+        personality_data = redis_db.get_all_personality_data()
+        
+        if not personality_data:
+            return jsonify({'error': 'No personality data to export'}), 404
+        
+        # 展平数据结构
+        flat_data = []
+        for item in personality_data:
+            flat_item = {
+                'student_id': item.get('student_id'),
+                'extraversion': item.get('scores', {}).get('extraversion'),
+                'agreeableness': item.get('scores', {}).get('agreeableness'),
+                'conscientiousness': item.get('scores', {}).get('conscientiousness'),
+                'emotional_stability': item.get('scores', {}).get('emotional_stability'),
+                'openness': item.get('scores', {}).get('openness'),
+                'language': item.get('language'),
+                'completed_at': item.get('completed_at'),
+                'test_version': item.get('test_version')
+            }
+            flat_data.append(flat_item)
+        
+        df = pd.DataFrame(flat_data)
+        
+        output = BytesIO()
+        df.to_csv(output, index=False, encoding='utf-8-sig')
+        output.seek(0)
+        
+        return send_file(
+            output,
+            mimetype='text/csv',
+            as_attachment=True,
+            download_name=f'personality_data_{datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")}.csv'
+        )
+    except Exception as e:
+        logger.error(f"Export personality error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
 # 新增流式聊天路由
 @app.route('/chat/stream', methods=['POST'])
 def chat_stream():

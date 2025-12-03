@@ -1,0 +1,980 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Big Five 人格特质测评</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        /* Header */
+        .header {
+            background: white;
+            border-radius: 16px;
+            padding: 32px;
+            margin-bottom: 24px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15);
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2rem;
+            color: #202123;
+            margin-bottom: 8px;
+        }
+
+        .header p {
+            color: #6b7280;
+            font-size: 1rem;
+        }
+
+        /* Language Switch */
+        .lang-switch {
+            display: flex;
+            justify-content: center;
+            gap: 12px;
+            margin-top: 20px;
+        }
+
+        .lang-btn {
+            padding: 10px 24px;
+            border: 2px solid #667eea;
+            background: white;
+            color: #667eea;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            transition: all 0.3s;
+        }
+
+        .lang-btn.active {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-color: transparent;
+        }
+
+        .lang-btn:hover:not(.active) {
+            background: #f0f0ff;
+        }
+
+        /* Instructions */
+        .instructions {
+            background: white;
+            padding: 24px;
+            border-radius: 12px;
+            margin-bottom: 24px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+        }
+
+        .instructions h2 {
+            font-size: 1.1rem;
+            color: #202123;
+            margin-bottom: 12px;
+        }
+
+        .instructions p {
+            color: #6b7280;
+            font-size: 0.95rem;
+            line-height: 1.6;
+        }
+
+        /* Progress */
+        .progress-container {
+            position: sticky;
+            top: 10px;
+            background: white;
+            padding: 16px 24px;
+            border-radius: 12px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+            z-index: 100;
+        }
+
+        .progress-bar {
+            height: 8px;
+            background: #e5e7eb;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea, #764ba2);
+            border-radius: 4px;
+            transition: width 0.3s ease;
+            width: 0%;
+        }
+
+        .progress-text {
+            text-align: center;
+            margin-top: 8px;
+            color: #6b7280;
+            font-size: 0.9rem;
+        }
+
+        /* Question Card */
+        .question-card {
+            background: white;
+            border-radius: 12px;
+            padding: 24px;
+            margin-bottom: 16px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+            transition: all 0.3s ease;
+            border: 2px solid transparent;
+        }
+
+        .question-card.answered {
+            border-color: #10b981;
+        }
+
+        .question-number {
+            font-size: 0.85rem;
+            color: #667eea;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+
+        .question-text {
+            font-size: 1.1rem;
+            color: #202123;
+            margin-bottom: 20px;
+            line-height: 1.5;
+        }
+
+        /* Rating Options */
+        .rating-options {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .rating-option {
+            flex: 1;
+            min-width: 80px;
+        }
+
+        .rating-option input {
+            display: none;
+        }
+
+        .rating-option label {
+            display: block;
+            padding: 12px 8px;
+            background: #f3f4f6;
+            border: 2px solid transparent;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            font-size: 0.8rem;
+            color: #6b7280;
+            text-align: center;
+        }
+
+        .rating-option label:hover {
+            background: #e5e7eb;
+            border-color: #667eea;
+        }
+
+        .rating-option input:checked + label {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-color: transparent;
+            color: white;
+            font-weight: 600;
+        }
+
+        /* Submit Button */
+        .submit-container {
+            text-align: center;
+            margin: 32px 0;
+        }
+
+        .submit-btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 16px 48px;
+            font-size: 1.1rem;
+            font-weight: 600;
+            border-radius: 50px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 20px rgba(102, 126, 234, 0.4);
+        }
+
+        .submit-btn:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 30px rgba(102, 126, 234, 0.5);
+        }
+
+        .submit-btn:disabled {
+            background: #9ca3af;
+            cursor: not-allowed;
+            box-shadow: none;
+        }
+
+        /* Results Section */
+        .results-section {
+            display: none;
+        }
+
+        .results-header {
+            background: white;
+            border-radius: 16px;
+            padding: 32px;
+            margin-bottom: 24px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15);
+            text-align: center;
+        }
+
+        .results-header h2 {
+            font-size: 1.8rem;
+            color: #202123;
+            margin-bottom: 8px;
+        }
+
+        /* Dimension Card */
+        .dimension-card {
+            background: white;
+            border-radius: 12px;
+            padding: 24px;
+            margin-bottom: 16px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+        }
+
+        .dimension-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+        }
+
+        .dimension-name {
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: #202123;
+        }
+
+        .dimension-score {
+            font-size: 1.5rem;
+            font-weight: 700;
+        }
+
+        .dimension-bar {
+            height: 10px;
+            background: #e5e7eb;
+            border-radius: 5px;
+            overflow: hidden;
+            margin-bottom: 16px;
+        }
+
+        .dimension-fill {
+            height: 100%;
+            border-radius: 5px;
+            transition: width 1s ease;
+        }
+
+        .dimension-level {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: white;
+            margin-bottom: 12px;
+        }
+
+        .dimension-description {
+            color: #6b7280;
+            font-size: 0.95rem;
+            line-height: 1.6;
+        }
+
+        /* Dimension Colors */
+        .extraversion .dimension-fill,
+        .extraversion .dimension-level { background: #ef4444; }
+        .extraversion .dimension-score { color: #ef4444; }
+
+        .agreeableness .dimension-fill,
+        .agreeableness .dimension-level { background: #14b8a6; }
+        .agreeableness .dimension-score { color: #14b8a6; }
+
+        .conscientiousness .dimension-fill,
+        .conscientiousness .dimension-level { background: #f59e0b; }
+        .conscientiousness .dimension-score { color: #f59e0b; }
+
+        .stability .dimension-fill,
+        .stability .dimension-level { background: #22c55e; }
+        .stability .dimension-score { color: #22c55e; }
+
+        .intellect .dimension-fill,
+        .intellect .dimension-level { background: #8b5cf6; }
+        .intellect .dimension-score { color: #8b5cf6; }
+
+        /* Summary Card */
+        .summary-card {
+            background: white;
+            border-radius: 12px;
+            padding: 24px;
+            margin-top: 24px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+            text-align: center;
+        }
+
+        .summary-card h3 {
+            font-size: 1.2rem;
+            color: #202123;
+            margin-bottom: 16px;
+        }
+
+        .summary-card p {
+            color: #6b7280;
+            line-height: 1.7;
+        }
+
+        /* Action Buttons */
+        .action-buttons {
+            display: flex;
+            justify-content: center;
+            gap: 16px;
+            margin-top: 32px;
+            flex-wrap: wrap;
+        }
+
+        .back-btn {
+            background: white;
+            color: #667eea;
+            border: 2px solid #667eea;
+            padding: 14px 32px;
+            font-size: 1rem;
+            font-weight: 600;
+            border-radius: 50px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .back-btn:hover {
+            background: #667eea;
+            color: white;
+        }
+
+        .restart-btn {
+            background: transparent;
+            color: #6b7280;
+            border: 2px solid #e5e7eb;
+            padding: 14px 32px;
+            font-size: 1rem;
+            font-weight: 600;
+            border-radius: 50px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .restart-btn:hover {
+            border-color: #667eea;
+            color: #667eea;
+        }
+
+        /* Saving indicator */
+        .saving-indicator {
+            display: none;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            color: #667eea;
+            margin-top: 16px;
+        }
+
+        .saving-indicator.show {
+            display: flex;
+        }
+
+        .spinner {
+            width: 20px;
+            height: 20px;
+            border: 2px solid #667eea;
+            border-top-color: transparent;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .save-success {
+            color: #10b981;
+        }
+
+        /* Responsive */
+        @media (max-width: 600px) {
+            .header h1 { font-size: 1.5rem; }
+            .rating-options { flex-direction: column; }
+            .rating-option { min-width: 100%; }
+            .action-buttons { flex-direction: column; }
+            .back-btn, .restart-btn { width: 100%; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Assessment Section -->
+        <div class="assessment-section" id="assessmentSection">
+            <div class="header">
+                <h1 id="titleText">🧠 Big Five 人格特质测评</h1>
+                <p id="subtitleText">基于 IPIP 量表的五因素人格模型评估</p>
+                
+                <div class="lang-switch">
+                    <button class="lang-btn active" id="langZh" onclick="switchLanguage('zh')">中文</button>
+                    <button class="lang-btn" id="langEn" onclick="switchLanguage('en')">English</button>
+                </div>
+            </div>
+
+            <div class="instructions">
+                <h2 id="instructionTitle">📋 测评说明</h2>
+                <p id="instructionText">请根据你目前的真实状态作答，而非你期望成为的样子。将自己与同性别、同龄人进行比较，诚实地评估每项描述对你的准确程度。本测评共50道题，大约需要5-8分钟完成。</p>
+            </div>
+
+            <div class="progress-container">
+                <div class="progress-bar">
+                    <div class="progress-fill" id="progressFill"></div>
+                </div>
+                <div class="progress-text"><span id="answeredCount">0</span> / 50 <span id="progressLabel">题已完成</span></div>
+            </div>
+
+            <div id="questionsContainer"></div>
+
+            <div class="submit-container">
+                <button class="submit-btn" id="submitBtn" disabled onclick="calculateResults()">
+                    <span id="submitText">查看我的人格特质</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Results Section -->
+        <div class="results-section" id="resultsSection">
+            <div class="results-header">
+                <h2 id="resultsTitle">🎯 你的人格特质轮廓</h2>
+                <p id="resultsSubtitle" style="color: #6b7280;">以下是你在五大人格维度上的得分与解读</p>
+            </div>
+
+            <div id="resultsContainer"></div>
+
+            <div class="summary-card" id="summaryCard"></div>
+
+            <div class="saving-indicator" id="savingIndicator">
+                <div class="spinner"></div>
+                <span id="savingText">正在保存结果...</span>
+            </div>
+
+            <div class="action-buttons">
+                <button class="back-btn" onclick="goBack()">
+                    <span id="backBtnText">返回学习助手</span>
+                </button>
+                <button class="restart-btn" onclick="restartAssessment()">
+                    <span id="restartBtnText">重新测评</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Current language
+        let currentLang = 'zh';
+        
+        // Get student info from sessionStorage
+        const studentId = sessionStorage.getItem('student_id');
+        const studentGroup = sessionStorage.getItem('student_group');
+
+        // Check login status
+        window.onload = function() {
+            if (!studentId) {
+                alert('请先登录');
+                window.location.href = '/login';
+                return;
+            }
+            initQuestions();
+        };
+
+        // Question Data - Bilingual
+        const questions = [
+            { id: 1, zh: "我是聚会中的活跃人物", en: "I am the life of the party", factor: "E", keyed: "+" },
+            { id: 2, zh: "我很少关心他人的感受", en: "I feel little concern for others", factor: "A", keyed: "-" },
+            { id: 3, zh: "我总是做好充分准备", en: "I am always prepared", factor: "C", keyed: "+" },
+            { id: 4, zh: "我容易感到压力", en: "I get stressed out easily", factor: "N", keyed: "-" },
+            { id: 5, zh: "我的词汇量很丰富", en: "I have a rich vocabulary", factor: "O", keyed: "+" },
+            { id: 6, zh: "我不太爱说话", en: "I don't talk a lot", factor: "E", keyed: "-" },
+            { id: 7, zh: "我对他人很感兴趣", en: "I am interested in people", factor: "A", keyed: "+" },
+            { id: 8, zh: "我经常把东西乱放", en: "I leave my belongings around", factor: "C", keyed: "-" },
+            { id: 9, zh: "我大多数时候都很放松", en: "I am relaxed most of the time", factor: "N", keyed: "+" },
+            { id: 10, zh: "我难以理解抽象概念", en: "I have difficulty understanding abstract ideas", factor: "O", keyed: "-" },
+            { id: 11, zh: "我在人群中感到自在", en: "I feel comfortable around people", factor: "E", keyed: "+" },
+            { id: 12, zh: "我会侮辱他人", en: "I insult people", factor: "A", keyed: "-" },
+            { id: 13, zh: "我注重细节", en: "I pay attention to details", factor: "C", keyed: "+" },
+            { id: 14, zh: "我经常担心事情", en: "I worry about things", factor: "N", keyed: "-" },
+            { id: 15, zh: "我有丰富的想象力", en: "I have a vivid imagination", factor: "O", keyed: "+" },
+            { id: 16, zh: "我喜欢待在幕后", en: "I keep in the background", factor: "E", keyed: "-" },
+            { id: 17, zh: "我能感同身受他人的情绪", en: "I sympathize with others' feelings", factor: "A", keyed: "+" },
+            { id: 18, zh: "我经常把事情搞砸", en: "I make a mess of things", factor: "C", keyed: "-" },
+            { id: 19, zh: "我很少感到忧郁", en: "I seldom feel blue", factor: "N", keyed: "+" },
+            { id: 20, zh: "我对抽象概念不感兴趣", en: "I am not interested in abstract ideas", factor: "O", keyed: "-" },
+            { id: 21, zh: "我主动发起交谈", en: "I start conversations", factor: "E", keyed: "+" },
+            { id: 22, zh: "我对他人的问题不感兴趣", en: "I am not interested in other people's problems", factor: "A", keyed: "-" },
+            { id: 23, zh: "我会立即完成任务", en: "I get chores done right away", factor: "C", keyed: "+" },
+            { id: 24, zh: "我很容易受到打扰", en: "I am easily disturbed", factor: "N", keyed: "-" },
+            { id: 25, zh: "我有很棒的想法", en: "I have excellent ideas", factor: "O", keyed: "+" },
+            { id: 26, zh: "我没什么话要说", en: "I have little to say", factor: "E", keyed: "-" },
+            { id: 27, zh: "我心肠很软", en: "I have a soft heart", factor: "A", keyed: "+" },
+            { id: 28, zh: "我经常忘记把东西放回原处", en: "I often forget to put things back in their proper place", factor: "C", keyed: "-" },
+            { id: 29, zh: "我很容易心烦意乱", en: "I get upset easily", factor: "N", keyed: "-" },
+            { id: 30, zh: "我缺乏想象力", en: "I do not have a good imagination", factor: "O", keyed: "-" },
+            { id: 31, zh: "我在聚会上会和很多人交谈", en: "I talk to a lot of different people at parties", factor: "E", keyed: "+" },
+            { id: 32, zh: "我对他人真的不感兴趣", en: "I am not really interested in others", factor: "A", keyed: "-" },
+            { id: 33, zh: "我喜欢秩序", en: "I like order", factor: "C", keyed: "+" },
+            { id: 34, zh: "我的情绪变化很大", en: "I change my mood a lot", factor: "N", keyed: "-" },
+            { id: 35, zh: "我能快速理解事物", en: "I am quick to understand things", factor: "O", keyed: "+" },
+            { id: 36, zh: "我不喜欢引起注意", en: "I don't like to draw attention to myself", factor: "E", keyed: "-" },
+            { id: 37, zh: "我愿意花时间帮助他人", en: "I take time out for others", factor: "A", keyed: "+" },
+            { id: 38, zh: "我逃避自己的职责", en: "I shirk my duties", factor: "C", keyed: "-" },
+            { id: 39, zh: "我的情绪经常起伏不定", en: "I have frequent mood swings", factor: "N", keyed: "-" },
+            { id: 40, zh: "我使用复杂的词汇", en: "I use difficult words", factor: "O", keyed: "+" },
+            { id: 41, zh: "我不介意成为焦点", en: "I don't mind being the center of attention", factor: "E", keyed: "+" },
+            { id: 42, zh: "我能感受到他人的情绪", en: "I feel others' emotions", factor: "A", keyed: "+" },
+            { id: 43, zh: "我遵循时间表", en: "I follow a schedule", factor: "C", keyed: "+" },
+            { id: 44, zh: "我很容易被激怒", en: "I get irritated easily", factor: "N", keyed: "-" },
+            { id: 45, zh: "我会花时间思考事情", en: "I spend time reflecting on things", factor: "O", keyed: "+" },
+            { id: 46, zh: "我在陌生人面前很安静", en: "I am quiet around strangers", factor: "E", keyed: "-" },
+            { id: 47, zh: "我让人感到轻松自在", en: "I make people feel at ease", factor: "A", keyed: "+" },
+            { id: 48, zh: "我对工作要求严格", en: "I am exacting in my work", factor: "C", keyed: "+" },
+            { id: 49, zh: "我经常感到忧郁", en: "I often feel blue", factor: "N", keyed: "-" },
+            { id: 50, zh: "我满脑子都是想法", en: "I am full of ideas", factor: "O", keyed: "+" }
+        ];
+
+        // Rating labels - Bilingual
+        const ratingLabels = {
+            zh: ["非常不准确", "比较不准确", "不确定", "比较准确", "非常准确"],
+            en: ["Very Inaccurate", "Moderately Inaccurate", "Neutral", "Moderately Accurate", "Very Accurate"]
+        };
+
+        // Factor info - Bilingual
+        const factorInfo = {
+            E: {
+                zh: {
+                    name: "外向性 (Extraversion)",
+                    highDesc: "你倾向于外向、热情，善于社交互动。你从与他人的交往中获得能量，喜欢成为关注的焦点。",
+                    midDesc: "你在社交方面比较平衡，能够适应不同的社交场合。既能享受社交活动，也需要独处时间。",
+                    lowDesc: "你倾向于内敛、安静，偏好独处或小群体互动。你从独处中获得能量。"
+                },
+                en: {
+                    name: "Extraversion",
+                    highDesc: "You tend to be outgoing and enthusiastic, enjoying social interactions. You gain energy from being with others.",
+                    midDesc: "You are balanced in social situations, adapting well to different contexts. You enjoy both socializing and solitude.",
+                    lowDesc: "You tend to be reserved and quiet, preferring solitude or small group interactions."
+                },
+                class: "extraversion"
+            },
+            A: {
+                zh: {
+                    name: "宜人性 (Agreeableness)",
+                    highDesc: "你待人友善、富有同理心，重视与他人的和谐关系。你乐于助人，善于理解他人感受。",
+                    midDesc: "你在人际互动中保持平衡，既能体谅他人，也能坚持自己的立场。",
+                    lowDesc: "你倾向于更加直接和竞争性，重视独立思考，可能更关注任务完成。"
+                },
+                en: {
+                    name: "Agreeableness",
+                    highDesc: "You are friendly and empathetic, valuing harmonious relationships. You are helpful and understanding.",
+                    midDesc: "You balance consideration for others with asserting your own position.",
+                    lowDesc: "You tend to be more direct and competitive, valuing independent thinking."
+                },
+                class: "agreeableness"
+            },
+            C: {
+                zh: {
+                    name: "尽责性 (Conscientiousness)",
+                    highDesc: "你做事有条理、自律性强，注重目标和计划。你可靠、勤奋，追求高标准。",
+                    midDesc: "你在组织性和灵活性之间保持平衡。你能够按计划行事，但也能适应变化。",
+                    lowDesc: "你倾向于灵活、随性，不太喜欢严格的规划和结构。"
+                },
+                en: {
+                    name: "Conscientiousness",
+                    highDesc: "You are organized and self-disciplined, focusing on goals and plans. You are reliable and hardworking.",
+                    midDesc: "You balance organization with flexibility, following plans while adapting to changes.",
+                    lowDesc: "You tend to be flexible and spontaneous, preferring less rigid structures."
+                },
+                class: "conscientiousness"
+            },
+            N: {
+                zh: {
+                    name: "情绪稳定性 (Emotional Stability)",
+                    highDesc: "你情绪稳定、冷静从容，能够很好地应对压力和挑战。你不容易焦虑或情绪波动。",
+                    midDesc: "你的情绪状态比较平衡，大多数时候能保持稳定，但在压力下也会有波动。",
+                    lowDesc: "你可能比较敏感，容易受到情绪影响。学习情绪调节技巧可能对你有帮助。"
+                },
+                en: {
+                    name: "Emotional Stability",
+                    highDesc: "You are emotionally stable and calm, handling stress and challenges well. You rarely feel anxious.",
+                    midDesc: "Your emotional state is balanced, staying stable most of the time with occasional fluctuations.",
+                    lowDesc: "You may be more sensitive and easily affected by emotions. Emotion regulation techniques might help."
+                },
+                class: "stability"
+            },
+            O: {
+                zh: {
+                    name: "开放性 (Openness/Intellect)",
+                    highDesc: "你思想开放、富有创造力，对新事物充满好奇。你喜欢探索新想法，享受智力挑战。",
+                    midDesc: "你在传统与创新之间保持平衡。你能接受新想法，同时也重视实际方法。",
+                    lowDesc: "你倾向于务实、传统，偏好具体和熟悉的事物。"
+                },
+                en: {
+                    name: "Openness/Intellect",
+                    highDesc: "You are open-minded and creative, curious about new things. You enjoy exploring ideas and intellectual challenges.",
+                    midDesc: "You balance tradition with innovation, accepting new ideas while valuing practical methods.",
+                    lowDesc: "You tend to be practical and traditional, preferring concrete and familiar things."
+                },
+                class: "intellect"
+            }
+        };
+
+        // UI Text - Bilingual
+        const uiText = {
+            zh: {
+                title: "🧠 Big Five 人格特质测评",
+                subtitle: "基于 IPIP 量表的五因素人格模型评估",
+                instructionTitle: "📋 测评说明",
+                instructionText: "请根据你目前的真实状态作答，而非你期望成为的样子。将自己与同性别、同龄人进行比较，诚实地评估每项描述对你的准确程度。本测评共50道题，大约需要5-8分钟完成。",
+                progressLabel: "题已完成",
+                questionPrefix: "第",
+                questionSuffix: "题",
+                submitBtn: "查看我的人格特质",
+                resultsTitle: "🎯 你的人格特质轮廓",
+                resultsSubtitle: "以下是你在五大人格维度上的得分与解读",
+                levelHigh: "高",
+                levelMid: "中",
+                levelLow: "低",
+                summaryTitle: "✨ 人格特质总结",
+                summaryTemplate: "在五大人格维度中，你最突出的特质是<strong>{highest}</strong>（得分 {highScore}），这意味着你在这方面的表现明显高于平均水平。相对而言，你的<strong>{lowest}</strong>（得分 {lowScore}）得分较低。每种人格特质都有其独特的优势，没有好坏之分。",
+                backBtn: "返回学习助手",
+                restartBtn: "重新测评",
+                savingText: "正在保存结果...",
+                savedText: "结果已保存 ✓"
+            },
+            en: {
+                title: "🧠 Big Five Personality Assessment",
+                subtitle: "Five-Factor Model based on IPIP scales",
+                instructionTitle: "📋 Instructions",
+                instructionText: "Please answer based on how you are now, not how you wish to be. Compare yourself to others of your same gender and age. This assessment has 50 questions and takes about 5-8 minutes.",
+                progressLabel: "completed",
+                questionPrefix: "Question",
+                questionSuffix: "",
+                submitBtn: "View My Results",
+                resultsTitle: "🎯 Your Personality Profile",
+                resultsSubtitle: "Your scores and interpretations across the five personality dimensions",
+                levelHigh: "High",
+                levelMid: "Medium",
+                levelLow: "Low",
+                summaryTitle: "✨ Personality Summary",
+                summaryTemplate: "Among the five personality dimensions, your most prominent trait is <strong>{highest}</strong> (score: {highScore}), indicating above-average performance in this area. Relatively, your <strong>{lowest}</strong> (score: {lowScore}) is lower. Each personality trait has its unique strengths.",
+                backBtn: "Back to Learning Assistant",
+                restartBtn: "Retake Assessment",
+                savingText: "Saving results...",
+                savedText: "Results saved ✓"
+            }
+        };
+
+        let responses = {};
+
+        // Switch language
+        function switchLanguage(lang) {
+            currentLang = lang;
+            
+            // Update language buttons
+            document.getElementById('langZh').classList.toggle('active', lang === 'zh');
+            document.getElementById('langEn').classList.toggle('active', lang === 'en');
+            
+            // Update UI text
+            const t = uiText[lang];
+            document.getElementById('titleText').textContent = t.title;
+            document.getElementById('subtitleText').textContent = t.subtitle;
+            document.getElementById('instructionTitle').textContent = t.instructionTitle;
+            document.getElementById('instructionText').textContent = t.instructionText;
+            document.getElementById('progressLabel').textContent = t.progressLabel;
+            document.getElementById('submitText').textContent = t.submitBtn;
+            document.getElementById('resultsTitle').textContent = t.resultsTitle;
+            document.getElementById('resultsSubtitle').textContent = t.resultsSubtitle;
+            document.getElementById('backBtnText').textContent = t.backBtn;
+            document.getElementById('restartBtnText').textContent = t.restartBtn;
+            document.getElementById('savingText').textContent = t.savingText;
+            
+            // Update questions
+            updateQuestionTexts();
+        }
+
+        // Update question texts based on language
+        function updateQuestionTexts() {
+            const t = uiText[currentLang];
+            questions.forEach((q, index) => {
+                const card = document.getElementById(`card-${q.id}`);
+                if (card) {
+                    card.querySelector('.question-number').textContent = 
+                        currentLang === 'zh' ? `${t.questionPrefix} ${index + 1} ${t.questionSuffix}` : `${t.questionPrefix} ${index + 1}`;
+                    card.querySelector('.question-text').textContent = q[currentLang];
+                    
+                    // Update rating labels
+                    const labels = card.querySelectorAll('.rating-option label');
+                    labels.forEach((label, i) => {
+                        label.textContent = ratingLabels[currentLang][i];
+                    });
+                }
+            });
+        }
+
+        // Initialize questions
+        function initQuestions() {
+            const container = document.getElementById('questionsContainer');
+            const t = uiText[currentLang];
+            
+            questions.forEach((q, index) => {
+                const card = document.createElement('div');
+                card.className = 'question-card';
+                card.id = `card-${q.id}`;
+                
+                let optionsHTML = '<div class="rating-options">';
+                for (let i = 1; i <= 5; i++) {
+                    optionsHTML += `
+                        <div class="rating-option">
+                            <input type="radio" name="q${q.id}" id="q${q.id}_${i}" value="${i}" onchange="handleResponse(${q.id}, ${i})">
+                            <label for="q${q.id}_${i}">${ratingLabels[currentLang][i-1]}</label>
+                        </div>
+                    `;
+                }
+                optionsHTML += '</div>';
+                
+                card.innerHTML = `
+                    <div class="question-number">${t.questionPrefix} ${index + 1} ${t.questionSuffix}</div>
+                    <div class="question-text">${q[currentLang]}</div>
+                    ${optionsHTML}
+                `;
+                
+                container.appendChild(card);
+            });
+        }
+
+        // Handle response
+        function handleResponse(questionId, value) {
+            responses[questionId] = value;
+            
+            const card = document.getElementById(`card-${questionId}`);
+            card.classList.add('answered');
+            
+            updateProgress();
+        }
+
+        // Update progress
+        function updateProgress() {
+            const answered = Object.keys(responses).length;
+            const progress = (answered / 50) * 100;
+            
+            document.getElementById('progressFill').style.width = `${progress}%`;
+            document.getElementById('answeredCount').textContent = answered;
+            
+            document.getElementById('submitBtn').disabled = answered < 50;
+        }
+
+        // Calculate results
+        function calculateResults() {
+            const scores = { E: 0, A: 0, C: 0, N: 0, O: 0 };
+            
+            questions.forEach(q => {
+                let score = responses[q.id];
+                
+                // Reverse score for negatively keyed items
+                if (q.keyed === '-') {
+                    score = 6 - score;
+                }
+                
+                scores[q.factor] += score;
+            });
+
+            // Convert to average (1-5 scale)
+            for (let factor in scores) {
+                scores[factor] = (scores[factor] / 10).toFixed(2);
+            }
+
+            displayResults(scores);
+            saveResults(scores);
+        }
+
+        // Display results
+        function displayResults(scores) {
+            document.getElementById('assessmentSection').style.display = 'none';
+            document.getElementById('resultsSection').style.display = 'block';
+            
+            const container = document.getElementById('resultsContainer');
+            container.innerHTML = '';
+
+            const factorOrder = ['E', 'A', 'C', 'N', 'O'];
+            const t = uiText[currentLang];
+            
+            factorOrder.forEach(factor => {
+                const info = factorInfo[factor];
+                const langInfo = info[currentLang];
+                const score = parseFloat(scores[factor]);
+                const percentage = ((score - 1) / 4) * 100;
+                
+                let level, description;
+                if (score >= 3.5) {
+                    level = t.levelHigh;
+                    description = langInfo.highDesc;
+                } else if (score >= 2.5) {
+                    level = t.levelMid;
+                    description = langInfo.midDesc;
+                } else {
+                    level = t.levelLow;
+                    description = langInfo.lowDesc;
+                }
+
+                const card = document.createElement('div');
+                card.className = `dimension-card ${info.class}`;
+                card.innerHTML = `
+                    <div class="dimension-header">
+                        <div class="dimension-name">${langInfo.name}</div>
+                        <div class="dimension-score">${score}</div>
+                    </div>
+                    <div class="dimension-bar">
+                        <div class="dimension-fill" style="width: 0%"></div>
+                    </div>
+                    <span class="dimension-level">${level}</span>
+                    <div class="dimension-description">${description}</div>
+                `;
+                
+                container.appendChild(card);
+                
+                // Animate the bar
+                setTimeout(() => {
+                    card.querySelector('.dimension-fill').style.width = `${percentage}%`;
+                }, 100);
+            });
+
+            // Generate summary
+            generateSummary(scores);
+            
+            // Scroll to top
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+
+        // Generate personality summary
+        function generateSummary(scores) {
+            const factors = Object.entries(scores)
+                .map(([factor, score]) => ({ factor, score: parseFloat(score) }))
+                .sort((a, b) => b.score - a.score);
+
+            const highest = factors[0];
+            const lowest = factors[factors.length - 1];
+
+            const t = uiText[currentLang];
+            const highestName = factorInfo[highest.factor][currentLang].name;
+            const lowestName = factorInfo[lowest.factor][currentLang].name;
+
+            const summaryCard = document.getElementById('summaryCard');
+            const summaryText = t.summaryTemplate
+                .replace('{highest}', highestName)
+                .replace('{highScore}', highest.score)
+                .replace('{lowest}', lowestName)
+                .replace('{lowScore}', lowest.score);
+
+            summaryCard.innerHTML = `
+                <h3>${t.summaryTitle}</h3>
+                <p>${summaryText}</p>
+            `;
+        }
+
+        // Save results to backend
+        async function saveResults(scores) {
+            const indicator = document.getElementById('savingIndicator');
+            const savingText = document.getElementById('savingText');
+            const t = uiText[currentLang];
+            
+            indicator.classList.add('show');
+            
+            try {
+                const response = await fetch('/api/personality/save', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        student_id: studentId,
+                        scores: scores,
+                        responses: responses,
+                        language: currentLang,
+                        completed_at: new Date().toISOString()
+                    })
+                });
+
+                const data = await response.json();
+                
+                if (data.success) {
+                    savingText.textContent = t.savedText;
+                    savingText.classList.add('save-success');
+                    indicator.querySelector('.spinner').style.display = 'none';
+                } else {
+                    throw new Error(data.error || 'Save failed');
+                }
+            } catch (error) {
+                console.error('Save error:', error);
+                savingText.textContent = currentLang === 'zh' ? '保存失败，请稍后重试' : 'Save failed, please try again';
+                savingText.style.color = '#ef4444';
+            }
+        }
+
+        // Go back to chat
+        function goBack() {
+            window.location.href = '/';
+        }
+
+        // Restart assessment
+        function restartAssessment() {
+            responses = {};
+            document.getElementById('resultsSection').style.display = 'none';
+            document.getElementById('assessmentSection').style.display = 'block';
+            
+            // Reset saving indicator
+            const indicator = document.getElementById('savingIndicator');
+            const savingText = document.getElementById('savingText');
+            indicator.classList.remove('show');
+            savingText.classList.remove('save-success');
+            savingText.style.color = '';
+            indicator.querySelector('.spinner').style.display = 'block';
+            
+            // Reset all radio buttons
+            document.querySelectorAll('input[type="radio"]').forEach(input => {
+                input.checked = false;
+            });
+            
+            // Reset card styles
+            document.querySelectorAll('.question-card').forEach(card => {
+                card.classList.remove('answered');
+            });
+            
+            updateProgress();
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+    </script>
+</body>
+</html>

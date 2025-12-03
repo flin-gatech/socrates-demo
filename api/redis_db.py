@@ -194,6 +194,67 @@ class RedisDB:
             logger.warning(f"Error updating student login: {e}")
             return None
 
+    # ============ 人格测试数据操作 ============
+    
+    def save_personality(self, student_id, personality_data):
+        """保存学生人格测试结果"""
+        if not self.available:
+            logger.debug("Redis unavailable, skipping save_personality")
+            return True
+        
+        try:
+            key = f"personality:{student_id}"
+            return self._set(key, json.dumps(personality_data), ex=86400*365)  # 保存1年
+        except Exception as e:
+            logger.warning(f"Error saving personality: {e}")
+            return False
+    
+    def get_personality(self, student_id):
+        """获取学生人格测试结果"""
+        if not self.available:
+            return None
+        
+        try:
+            key = f"personality:{student_id}"
+            data = self._get(key)
+            return json.loads(data) if data else None
+        except Exception as e:
+            logger.warning(f"Error getting personality: {e}")
+            return None
+    
+    def has_personality_data(self, student_id):
+        """检查学生是否已完成人格测试"""
+        if not self.available:
+            return False
+        
+        try:
+            key = f"personality:{student_id}"
+            data = self._get(key)
+            return data is not None
+        except Exception as e:
+            logger.warning(f"Error checking personality: {e}")
+            return False
+    
+    def get_all_personality_data(self):
+        """获取所有学生人格测试数据"""
+        if not self.available:
+            return []
+        
+        try:
+            keys = self._keys("personality:*")
+            personality_list = []
+            for key in keys:
+                data = self._get(key)
+                if data:
+                    try:
+                        personality_list.append(json.loads(data))
+                    except json.JSONDecodeError:
+                        logger.warning(f"Invalid JSON in key {key}")
+            return personality_list
+        except Exception as e:
+            logger.warning(f"Error getting all personality data: {e}")
+            return []
+
     # ============ 对话数据操作 ============
     
     def create_conversation(self, conv_id, student_id, group_info, llm_type, title):
